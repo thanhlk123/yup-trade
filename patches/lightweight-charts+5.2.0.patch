@@ -1,0 +1,56 @@
+diff --git a/node_modules/lightweight-charts/dist/lightweight-charts.standalone.development.js b/node_modules/lightweight-charts/dist/lightweight-charts.standalone.development.js
+index cb09cdf..244d32d 100644
+--- a/node_modules/lightweight-charts/dist/lightweight-charts.standalone.development.js
++++ b/node_modules/lightweight-charts/dist/lightweight-charts.standalone.development.js
+@@ -7916,7 +7916,7 @@
+         DevicePixelContentBoxBinding.prototype.dispose = function () {
+             var _a, _b;
+             if (this._canvasElement === null) {
+-                throw new Error('Object is disposed');
++                return;
+             }
+             (_a = this._canvasElementResizeObserver) === null || _a === void 0 ? void 0 : _a.disconnect();
+             this._canvasElementResizeObserver = null;
+@@ -7929,7 +7929,13 @@
+         Object.defineProperty(DevicePixelContentBoxBinding.prototype, "canvasElement", {
+             get: function () {
+                 if (this._canvasElement === null) {
+-                    throw new Error('Object is disposed');
++                    if (typeof document !== 'undefined') {
++                        if (!this._dummyCanvas) {
++                            this._dummyCanvas = document.createElement('canvas');
++                        }
++                        return this._dummyCanvas;
++                    }
++                    return { width: 0, height: 0, style: {}, getContext: function() { return null; } };
+                 }
+                 return this._canvasElement;
+             },
+diff --git a/node_modules/lightweight-charts/dist/lightweight-charts.standalone.development.mjs b/node_modules/lightweight-charts/dist/lightweight-charts.standalone.development.mjs
+index d110003..738ee59 100644
+--- a/node_modules/lightweight-charts/dist/lightweight-charts.standalone.development.mjs
++++ b/node_modules/lightweight-charts/dist/lightweight-charts.standalone.development.mjs
+@@ -7913,7 +7913,7 @@ var DevicePixelContentBoxBinding = /** @class */ (function () {
+     DevicePixelContentBoxBinding.prototype.dispose = function () {
+         var _a, _b;
+         if (this._canvasElement === null) {
+-            throw new Error('Object is disposed');
++            return;
+         }
+         (_a = this._canvasElementResizeObserver) === null || _a === void 0 ? void 0 : _a.disconnect();
+         this._canvasElementResizeObserver = null;
+@@ -7926,7 +7926,13 @@ var DevicePixelContentBoxBinding = /** @class */ (function () {
+     Object.defineProperty(DevicePixelContentBoxBinding.prototype, "canvasElement", {
+         get: function () {
+             if (this._canvasElement === null) {
+-                throw new Error('Object is disposed');
++                if (typeof document !== 'undefined') {
++                    if (!this._dummyCanvas) {
++                        this._dummyCanvas = document.createElement('canvas');
++                    }
++                    return this._dummyCanvas;
++                }
++                return { width: 0, height: 0, style: {}, getContext: function() { return null; } };
+             }
+             return this._canvasElement;
+         },

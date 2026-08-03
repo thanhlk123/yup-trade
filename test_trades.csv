@@ -1,0 +1,5 @@
+Thời gian,Cặp tiền,Lệnh,Khối lượng,Giá vào,Giá ra,Lợi nhuận,SL,TP,Ghi chú
+2026-07-21 09:30,XAUUSD,BUY,0.1,2320.5,2322.0,15,2315,2335,Lệnh mồi DCA
+2026-07-21 09:45,XAUUSD,BUY,0.2,2318.0,2322.0,80,2315,2335,Lệnh nhồi DCA tiếp theo
+2026-07-21 14:00,GBPUSD,SELL,0.5,1.2750,1.2720,150,1.2780,1.2650,Lệnh lẻ bình thường
+2026-07-21 15:10,XAUUSD,SELL,0.1,2330.0,2335.0,-50,2335,2320,Lệnh sell ngược xu hướng

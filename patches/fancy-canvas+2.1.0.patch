@@ -1,0 +1,56 @@
+diff --git a/node_modules/fancy-canvas/canvas-element-bitmap-size.js b/node_modules/fancy-canvas/canvas-element-bitmap-size.js
+index 77412ea..83b0cdf 100644
+--- a/node_modules/fancy-canvas/canvas-element-bitmap-size.js
++++ b/node_modules/fancy-canvas/canvas-element-bitmap-size.js
+@@ -27,7 +27,7 @@ var DevicePixelContentBoxBinding = /** @class */ (function () {
+     DevicePixelContentBoxBinding.prototype.dispose = function () {
+         var _a, _b;
+         if (this._canvasElement === null) {
+-            throw new Error('Object is disposed');
++            return;
+         }
+         (_a = this._canvasElementResizeObserver) === null || _a === void 0 ? void 0 : _a.disconnect();
+         this._canvasElementResizeObserver = null;
+@@ -40,7 +40,13 @@ var DevicePixelContentBoxBinding = /** @class */ (function () {
+     Object.defineProperty(DevicePixelContentBoxBinding.prototype, "canvasElement", {
+         get: function () {
+             if (this._canvasElement === null) {
+-                throw new Error('Object is disposed');
++                if (typeof document !== 'undefined') {
++                    if (!this._dummyCanvas) {
++                        this._dummyCanvas = document.createElement('canvas');
++                    }
++                    return this._dummyCanvas;
++                }
++                return { width: 0, height: 0, style: {}, getContext: function() { return null; } };
+             }
+             return this._canvasElement;
+         },
+diff --git a/node_modules/fancy-canvas/canvas-element-bitmap-size.mjs b/node_modules/fancy-canvas/canvas-element-bitmap-size.mjs
+index 7a22370..56a73b2 100644
+--- a/node_modules/fancy-canvas/canvas-element-bitmap-size.mjs
++++ b/node_modules/fancy-canvas/canvas-element-bitmap-size.mjs
+@@ -24,7 +24,7 @@ var DevicePixelContentBoxBinding = /** @class */ (function () {
+     DevicePixelContentBoxBinding.prototype.dispose = function () {
+         var _a, _b;
+         if (this._canvasElement === null) {
+-            throw new Error('Object is disposed');
++            return;
+         }
+         (_a = this._canvasElementResizeObserver) === null || _a === void 0 ? void 0 : _a.disconnect();
+         this._canvasElementResizeObserver = null;
+@@ -37,7 +37,13 @@ var DevicePixelContentBoxBinding = /** @class */ (function () {
+     Object.defineProperty(DevicePixelContentBoxBinding.prototype, "canvasElement", {
+         get: function () {
+             if (this._canvasElement === null) {
+-                throw new Error('Object is disposed');
++                if (typeof document !== 'undefined') {
++                    if (!this._dummyCanvas) {
++                        this._dummyCanvas = document.createElement('canvas');
++                    }
++                    return this._dummyCanvas;
++                }
++                return { width: 0, height: 0, style: {}, getContext: function() { return null; } };
+             }
+             return this._canvasElement;
+         },
