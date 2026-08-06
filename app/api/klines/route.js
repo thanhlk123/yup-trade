@@ -3,21 +3,65 @@ import { NextResponse } from 'next/server';
 // ─── Symbol Configuration ──────────────────────────────────────────────────────
 // Defines routing strategy per asset
 const SYMBOL_CONFIG = {
-  // ── Metals via Binance/Bybit index + Swissquote calibration ──
-  XAUUSD: { type: 'metal', binancePair: 'XAUUSDT', bybitSymbol: 'XAUUSDT', calibrate: true,  precision: 2 },
-  XAGUSD: { type: 'metal', binancePair: 'XAGUSDT', bybitSymbol: 'XAGUSDT', calibrate: false, precision: 4 },
+  // ── Metals via Binance/Bybit index ──
+  XAUUSD: { type: 'metal', binancePair: 'XAUUSDT', bybitSymbol: 'XAUUSDT', precision: 2 },
+  XAGUSD: { type: 'metal', binancePair: 'XAGUSDT', bybitSymbol: 'XAGUSDT', precision: 4 },
 
-  // ── Forex Majors via Yahoo Finance (primary) + Binance spot (fallback) ──
+  // ── Forex Majors & Minors ──
   EURUSD: { type: 'forex', yahooSymbol: 'EURUSD=X', binanceSpot: 'EURUSDT', precision: 5 },
   GBPUSD: { type: 'forex', yahooSymbol: 'GBPUSD=X', binanceSpot: 'GBPUSDT', precision: 5 },
-  USDJPY: { type: 'forex', yahooSymbol: 'USDJPY=X', binanceSpot: null,       precision: 3 },
-  GBPJPY: { type: 'forex', yahooSymbol: 'GBPJPY=X', binanceSpot: null,       precision: 3 },
-  AUDUSD: { type: 'forex', yahooSymbol: 'AUDUSD=X', binanceSpot: null,       precision: 5 },
-  USDCAD: { type: 'forex', yahooSymbol: 'USDCAD=X', binanceSpot: null,       precision: 5 },
-  USDCHF: { type: 'forex', yahooSymbol: 'USDCHF=X', binanceSpot: null,       precision: 5 },
-  NZDUSD: { type: 'forex', yahooSymbol: 'NZDUSD=X', binanceSpot: null,       precision: 5 },
-  EURGBP: { type: 'forex', yahooSymbol: 'EURGBP=X', binanceSpot: null,       precision: 5 },
-  EURJPY: { type: 'forex', yahooSymbol: 'EURJPY=X', binanceSpot: null,       precision: 3 },
+  USDJPY: { type: 'forex', yahooSymbol: 'USDJPY=X', precision: 3 },
+  GBPJPY: { type: 'forex', yahooSymbol: 'GBPJPY=X', precision: 3 },
+  AUDUSD: { type: 'forex', yahooSymbol: 'AUDUSD=X', precision: 5 },
+  USDCAD: { type: 'forex', yahooSymbol: 'CAD=X', precision: 5 },
+  USDCHF: { type: 'forex', yahooSymbol: 'CHF=X', precision: 5 },
+  NZDUSD: { type: 'forex', yahooSymbol: 'NZDUSD=X', precision: 5 },
+  EURGBP: { type: 'forex', yahooSymbol: 'EURGBP=X', precision: 5 },
+  EURJPY: { type: 'forex', yahooSymbol: 'EURJPY=X', precision: 3 },
+  EURCHF: { type: 'forex', yahooSymbol: 'EURCHF=X', precision: 5 },
+  EURAUD: { type: 'forex', yahooSymbol: 'EURAUD=X', precision: 5 },
+  EURNZD: { type: 'forex', yahooSymbol: 'EURNZD=X', precision: 5 },
+  EURCAD: { type: 'forex', yahooSymbol: 'EURCAD=X', precision: 5 },
+  GBPCHF: { type: 'forex', yahooSymbol: 'GBPCHF=X', precision: 5 },
+  GBPAUD: { type: 'forex', yahooSymbol: 'GBPAUD=X', precision: 5 },
+  GBPNZD: { type: 'forex', yahooSymbol: 'GBPNZD=X', precision: 5 },
+  GBPCAD: { type: 'forex', yahooSymbol: 'GBPCAD=X', precision: 5 },
+  AUDJPY: { type: 'forex', yahooSymbol: 'AUDJPY=X', precision: 3 },
+  AUDCHF: { type: 'forex', yahooSymbol: 'AUDCHF=X', precision: 5 },
+  AUDCAD: { type: 'forex', yahooSymbol: 'AUDCAD=X', precision: 5 },
+  AUDNZD: { type: 'forex', yahooSymbol: 'AUDNZD=X', precision: 5 },
+  NZDJPY: { type: 'forex', yahooSymbol: 'NZDJPY=X', precision: 3 },
+  NZDCHF: { type: 'forex', yahooSymbol: 'NZDCHF=X', precision: 5 },
+  NZDCAD: { type: 'forex', yahooSymbol: 'NZDCAD=X', precision: 5 },
+  CADJPY: { type: 'forex', yahooSymbol: 'CADJPY=X', precision: 3 },
+  CADCHF: { type: 'forex', yahooSymbol: 'CADCHF=X', precision: 5 },
+  CHFJPY: { type: 'forex', yahooSymbol: 'CHFJPY=X', precision: 3 },
+
+  // ── Indices ──
+  US30:   { type: 'forex', yahooSymbol: '^DJI', precision: 1 },
+  NAS100: { type: 'forex', yahooSymbol: '^IXIC', precision: 1 },
+  SPX500: { type: 'forex', yahooSymbol: '^GSPC', precision: 1 },
+  GER40:  { type: 'forex', yahooSymbol: '^GDAXI', precision: 1 },
+  UK100:  { type: 'forex', yahooSymbol: '^FTSE', precision: 1 },
+  JPN225: { type: 'forex', yahooSymbol: '^N225', precision: 1 },
+  AUS200: { type: 'forex', yahooSymbol: '^AXJO', precision: 1 },
+
+  // ── Commodities ──
+  USOIL:  { type: 'forex', yahooSymbol: 'CL=F', precision: 3 },
+  UKOIL:  { type: 'forex', yahooSymbol: 'BZ=F', precision: 3 },
+
+  // ── Crypto ──
+  BTCUSD: { type: 'forex', yahooSymbol: 'BTC-USD', binanceSpot: 'BTCUSDT', precision: 2 },
+  ETHUSD: { type: 'forex', yahooSymbol: 'ETH-USD', binanceSpot: 'ETHUSDT', precision: 2 },
+
+  // ── Stocks (US) ──
+  AAPL:   { type: 'forex', yahooSymbol: 'AAPL', precision: 2 },
+  TSLA:   { type: 'forex', yahooSymbol: 'TSLA', precision: 2 },
+  AMZN:   { type: 'forex', yahooSymbol: 'AMZN', precision: 2 },
+  NVDA:   { type: 'forex', yahooSymbol: 'NVDA', precision: 2 },
+  MSFT:   { type: 'forex', yahooSymbol: 'MSFT', precision: 2 },
+  META:   { type: 'forex', yahooSymbol: 'META', precision: 2 },
+  GOOGL:  { type: 'forex', yahooSymbol: 'GOOGL', precision: 2 },
 };
 
 // ─── Interval mapping ─────────────────────────────────────────────────────────
@@ -47,114 +91,96 @@ function mapInterval(interval, provider = 'binance') {
   return map[key] || '5m';
 }
 
-// ─── Stable Calibration Offset Cache ─────────────────────────────────────────
-// The structural gap between crypto-exchange indexes (Binance indexPriceKlines)
-// and interbank OTC pricing (Oanda, Swissquote, IC Markets) is ~4–6 USD.
-//
-// Problem: computing offset from two live snapshots every request causes ±1–2 USD
-// jitter because both prices tick independently between requests.
-//
-// Solution: cache the offset for CACHE_TTL_MS and AVERAGE N_SAMPLES consecutive
-// Swissquote−Binance readings to smooth noise. This produces a stable offset that
-// only drifts slowly with genuine market structure changes.
-//
-// TTL = 5 minutes: short enough to track slow structural changes, long enough
-// to prevent per-refresh jitter.
-const CACHE_TTL_MS   = 5 * 60 * 1000; // 5 minutes per cache cycle
-const N_SAMPLES      = 3;             // average N readings on each cache refresh
-const EMA_NEW_WEIGHT = 0.7;           // blend: 70% new + 30% previous → smooth transitions
 
-let offsetCache = {
-  value:     null,   // cached offset (USD)
-  sqMid:     null,   // Swissquote mid at last calibration
-  binClose:  null,   // Binance 1m close at last calibration
-  expiresAt: 0,      // epoch ms when cache expires
-};
+// ─── SOURCE: Tiingo FX/Crypto ──────────────────────────────────────────────────
+async function fetchTiingoKlines(symbol, interval, startTime, endTime) {
+  const tiingoIntervalMap = { '1m': '1min', '3m': '3min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '1hour', '4h': '4hour', '1d': '1day' };
+  const str = String(interval).trim().toLowerCase();
+  let key = str;
+  if      (str === '1m'  || str === '1')   key = '1m';
+  else if (str === '3m'  || str === '3')   key = '3m';
+  else if (str === '5m'  || str === '5')   key = '5m';
+  else if (str === '15m' || str === '15')  key = '15m';
+  else if (str === '30m' || str === '30')  key = '30m';
+  else if (str === '1h'  || str === '60m'  || str === '60')  key = '1h';
+  else if (str === '4h'  || str === '240m' || str === '240') key = '4h';
+  else if (str === '1d'  || str === 'd')   key = '1d';
+  
+  const resampleFreq = tiingoIntervalMap[key] || '5min';
+  const tiingoSymbol = symbol.toLowerCase();
+  
+  const apiKey = process.env.TIINGO_API_KEY || 'fe7e2330a3175b6831505e791229ac3350743181';
+  let url = `https://api.tiingo.com/tiingo/fx/${tiingoSymbol}/prices?resampleFreq=${resampleFreq}&token=${apiKey}`;
+  
+  if (startTime) {
+    url += `&startDate=${new Date(parseInt(startTime)).toISOString()}`;
+  }
+  if (endTime) {
+    url += `&endDate=${new Date(parseInt(endTime)).toISOString()}`;
+  }
 
-// Fetch a single (Swissquote mid, Binance 1m close) pair
-async function fetchSingleCalibrationSample() {
-  const [sqRes, binRes] = await Promise.allSettled([
-    fetch(
-      'https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/XAU/USD',
-      { headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' }, cache: 'no-store' }
-    ).then(r => r.ok ? r.json() : Promise.reject('sq_not_ok')),
-
-    fetch(
-      'https://fapi.binance.com/fapi/v1/indexPriceKlines?pair=XAUUSDT&interval=1m&limit=1',
-      { headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' }, cache: 'no-store' }
-    ).then(r => r.ok ? r.json() : Promise.reject('bin_not_ok')),
-  ]);
-
-  const sqJson  = sqRes.status  === 'fulfilled' ? sqRes.value  : null;
-  const binJson = binRes.status === 'fulfilled' ? binRes.value : null;
-
-  const profile = sqJson?.[0]?.spreadProfilePrices?.find(p => p.spreadProfile === 'premium')
-               ?? sqJson?.[0]?.spreadProfilePrices?.[0];
-  const sqMid   = (profile?.bid && profile?.ask) ? (profile.bid + profile.ask) / 2 : null;
-  const binClose = Array.isArray(binJson) && binJson.length > 0
-    ? parseFloat(binJson[binJson.length - 1][4])
-    : null;
-
-  if (sqMid && binClose && isFinite(sqMid) && isFinite(binClose)) {
-    return { offset: sqMid - binClose, sqMid, binClose };
+  try {
+    const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, next: { revalidate: 15 } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return data.map(d => ({
+        time: Math.floor(new Date(d.date).getTime() / 1000),
+        open: parseFloat(d.open),
+        high: parseFloat(d.high),
+        low: parseFloat(d.low),
+        close: parseFloat(d.close),
+        volume: 0
+      })).sort((a, b) => a.time - b.time);
+    }
+  } catch (e) {
+    console.error('Tiingo fetch error:', e);
   }
   return null;
 }
 
-// Get a stable, cached calibration offset.
-// On cache miss: takes N_SAMPLES readings and averages them, then caches for TTL.
-async function getStableCalibrationOffset() {
-  const now = Date.now();
-  if (offsetCache.value !== null && now < offsetCache.expiresAt) {
-    // Cache hit — return stable cached value
-    return offsetCache;
+// ─── SOURCE: TwelveData ────────────────────────────────────────────────────────
+async function fetchTwelveDataKlines(symbol, interval, limit) {
+  const tdIntervalMap = { '1m': '1min', '3m': '1min', '5m': '5min', '15m': '15min', '30m': '30min', '1h': '1h', '4h': '4h', '1d': '1day' };
+  const str = String(interval).trim().toLowerCase();
+  let key = str;
+  if      (str === '1m'  || str === '1')   key = '1m';
+  else if (str === '3m'  || str === '3')   key = '1m';
+  else if (str === '5m'  || str === '5')   key = '5m';
+  else if (str === '15m' || str === '15')  key = '15m';
+  else if (str === '30m' || str === '30')  key = '30m';
+  else if (str === '1h'  || str === '60m'  || str === '60')  key = '1h';
+  else if (str === '4h'  || str === '240m' || str === '240') key = '4h';
+  else if (str === '1d'  || str === 'd')   key = '1d';
+  
+  const tdInterval = tdIntervalMap[key] || '5min';
+  let tdSymbol = symbol;
+  if (symbol.length === 6) {
+    tdSymbol = symbol.slice(0, 3) + '/' + symbol.slice(3); // e.g. EUR/USD
   }
-
-  // Cache miss — compute fresh offset using averaged samples
+  const safeLimit = Math.min(parseInt(limit) || 1000, 1000);
+  
+  const apiKey = process.env.TWELVEDATA_API_KEY || '768f1eba580d41598f5cba2f748fa272';
+  let url = `https://api.twelvedata.com/time_series?symbol=${tdSymbol}&interval=${tdInterval}&outputsize=${safeLimit}&timezone=UTC&apikey=${apiKey}`;
+  
   try {
-    const samples = [];
-    for (let i = 0; i < N_SAMPLES; i++) {
-      const s = await fetchSingleCalibrationSample();
-      if (s) samples.push(s);
-      // Small pause between samples to catch slightly different tick values
-      if (i < N_SAMPLES - 1) await new Promise(r => setTimeout(r, 250));
+    const res = await fetch(url, { next: { revalidate: 15 } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.status === 'ok' && Array.isArray(data.values) && data.values.length > 0) {
+      return data.values.map(d => ({
+        time: Math.floor(new Date(d.datetime + 'Z').getTime() / 1000),
+        open: parseFloat(d.open),
+        high: parseFloat(d.high),
+        low: parseFloat(d.low),
+        close: parseFloat(d.close),
+        volume: 0
+      })).sort((a, b) => a.time - b.time);
     }
-
-    if (samples.length === 0) {
-      return { value: offsetCache.value ?? 0, sqMid: null, binClose: null };
-    }
-
-    const avgOffset   = samples.reduce((a, s) => a + s.offset,   0) / samples.length;
-    const avgSqMid    = samples.reduce((a, s) => a + s.sqMid,    0) / samples.length;
-    const avgBinClose = samples.reduce((a, s) => a + s.binClose, 0) / samples.length;
-
-    // Reject if implausibly large (market closed, data glitch, or weekend gap)
-    if (Math.abs(avgOffset) > 15) {
-      console.warn(`[klines] Offset out of range (${avgOffset.toFixed(2)} USD) — keeping previous`);
-      return { value: offsetCache.value ?? 0, sqMid: null, binClose: null };
-    }
-
-    // EMA blend: 70% new + 30% previous — smooths jumps across cache cycles
-    // (e.g. server restart or gradual structural drift)
-    const prevOffset  = offsetCache.value ?? avgOffset;
-    const blended     = EMA_NEW_WEIGHT * avgOffset + (1 - EMA_NEW_WEIGHT) * prevOffset;
-    // Round to 0.01 precision — eliminates sub-cent noise
-    const stableOffset = Math.round(blended * 100) / 100;
-
-    offsetCache = {
-      value:     stableOffset,
-      sqMid:     Math.round(avgSqMid    * 100) / 100,
-      binClose:  Math.round(avgBinClose * 100) / 100,
-      expiresAt: now + CACHE_TTL_MS,
-    };
-
-    console.log(`[klines] Calibration refreshed: offset=${stableOffset.toFixed(2)} USD (raw=${avgOffset.toFixed(2)}, prev=${prevOffset.toFixed(2)}, sq=${avgSqMid.toFixed(2)}, bin=${avgBinClose.toFixed(2)}, samples=${samples.length})`);
-    return offsetCache;
-
   } catch (e) {
-    console.error('[klines] Calibration error:', e);
-    return { value: offsetCache.value ?? 0, sqMid: null, binClose: null };
+    console.error('TwelveData fetch error:', e);
   }
+  return null;
 }
 
 // ─── SOURCE 1: Binance Index Price Klines (metals: XAUUSDT, XAGUSDT) ─────────
@@ -336,53 +362,53 @@ export async function GET(request) {
     const endTime   = searchParams.get('endTime');
 
     // Resolve symbol config (default to XAUUSD for unknown symbols)
-    const symbolKey = Object.keys(SYMBOL_CONFIG).find(k => k === rawSymbol) || 'XAUUSD';
+    const cleanSymbol = rawSymbol.replace(/[^A-Z0-9]/g, '');
+    let symbolKey = Object.keys(SYMBOL_CONFIG).find(k => k === cleanSymbol);
+    if (!symbolKey) {
+      symbolKey = Object.keys(SYMBOL_CONFIG).find(k => cleanSymbol.startsWith(k)) || 'XAUUSD';
+    }
     const cfg = SYMBOL_CONFIG[symbolKey];
 
-    // ── Metal path (XAUUSD, XAGUSD): Binance/Bybit index + Swissquote calib ──
+    // ── Metal path (XAUUSD, XAGUSD) ──
     if (cfg.type === 'metal') {
-      const [candleResult, calibResult] = await Promise.allSettled([
-        (async () => {
-          let candles = await fetchBinanceIndexKlines(cfg.binancePair, interval, startTime, endTime, limit);
-          if (candles?.length > 0) return { candles, provider: 'binance_index' };
-          candles = await fetchBybitIndexKlines(cfg.bybitSymbol, interval, startTime, endTime, limit);
-          if (candles?.length > 0) return { candles, provider: 'bybit_index' };
-          return null;
-        })(),
-        cfg.calibrate ? getStableCalibrationOffset() : Promise.resolve({ value: 0, sqMid: null, binClose: null }),
-      ]);
+      let candles = await fetchTiingoKlines(symbolKey, interval, startTime, endTime);
+      let providerUsed = 'tiingo';
 
-      const candleData = candleResult.status === 'fulfilled' ? candleResult.value : null;
-      if (!candleData?.candles?.length) {
+      if (!candles || candles.length === 0) {
+        candles = await fetchTwelveDataKlines(symbolKey, interval, limit);
+        providerUsed = 'twelvedata';
+      }
+
+      if (!candles || candles.length === 0) {
+        candles = await fetchBinanceIndexKlines(cfg.binancePair, interval, startTime, endTime, limit);
+        providerUsed = 'binance_index';
+      }
+
+      if (!candles || candles.length === 0) {
+        candles = await fetchBybitIndexKlines(cfg.bybitSymbol, interval, startTime, endTime, limit);
+        providerUsed = 'bybit_index';
+      }
+
+      if (!candles || candles.length === 0) {
         return NextResponse.json(
           { error: `Failed to fetch ${symbolKey} candles from all providers` },
           { status: 502 }
         );
       }
 
-      const { candles, provider: providerUsed } = candleData;
-      const calibration = calibResult.status === 'fulfilled'
-        ? calibResult.value
-        : { value: 0, sqMid: null, binClose: null };
-      const calibrationOffset = (cfg.calibrate ? calibration.value : 0) ?? 0;
-
       const seenTimes = new Set();
       const uniqueCandles = [];
       for (const c of candles) {
         if (!seenTimes.has(c.time) && isFinite(c.time) && isFinite(c.open)) {
           seenTimes.add(c.time);
-          uniqueCandles.push(
-            calibrationOffset !== 0
-              ? {
-                  time:  c.time,
-                  open:  parseFloat((c.open  + calibrationOffset).toFixed(cfg.precision)),
-                  high:  parseFloat((c.high  + calibrationOffset).toFixed(cfg.precision)),
-                  low:   parseFloat((c.low   + calibrationOffset).toFixed(cfg.precision)),
-                  close: parseFloat((c.close + calibrationOffset).toFixed(cfg.precision)),
-                  volume: c.volume || 0,
-                }
-              : c
-          );
+          uniqueCandles.push({
+            time:  c.time,
+            open:  parseFloat(c.open.toFixed(cfg.precision)),
+            high:  parseFloat(c.high.toFixed(cfg.precision)),
+            low:   parseFloat(c.low.toFixed(cfg.precision)),
+            close: parseFloat(c.close.toFixed(cfg.precision)),
+            volume: c.volume || 0,
+          });
         }
       }
       uniqueCandles.sort((a, b) => a.time - b.time);
@@ -391,23 +417,25 @@ export async function GET(request) {
         success: true,
         symbol:  symbolKey,
         provider: providerUsed,
-        calibration: {
-          source:        calibrationOffset !== 0 ? 'swissquote_interbank_cached' : 'none',
-          offsetUsd:     calibrationOffset,
-          swissquoteMid: calibration.sqMid    ?? null,
-          binanceLatest: calibration.binClose ?? null,
-          cacheExpiresAt: new Date(offsetCache.expiresAt).toISOString(),
-        },
         interval,
         count: uniqueCandles.length,
         data:  uniqueCandles,
       });
     }
 
-    // ── Forex path (EURUSD, GBPUSD, USDJPY, etc.): Yahoo Finance + Binance spot fallback ──
     if (cfg.type === 'forex') {
-      let candles = await fetchYahooKlines(cfg.yahooSymbol, interval, startTime, endTime);
-      let providerUsed = 'yahoo_finance';
+      let candles = await fetchTiingoKlines(symbolKey, interval, startTime, endTime);
+      let providerUsed = 'tiingo';
+
+      if (!candles || candles.length === 0) {
+        candles = await fetchTwelveDataKlines(symbolKey, interval, limit);
+        providerUsed = 'twelvedata';
+      }
+
+      if (!candles || candles.length === 0) {
+        candles = await fetchYahooKlines(cfg.yahooSymbol, interval, startTime, endTime);
+        providerUsed = 'yahoo_finance';
+      }
 
       if ((!candles || candles.length === 0) && cfg.binanceSpot) {
         candles = await fetchBinanceSpotKlines(cfg.binanceSpot, interval, startTime, endTime, limit);
@@ -442,7 +470,6 @@ export async function GET(request) {
         success: true,
         symbol:  symbolKey,
         provider: providerUsed,
-        calibration: { source: 'none', offsetUsd: 0 },
         interval,
         count: uniqueCandles.length,
         data:  uniqueCandles,

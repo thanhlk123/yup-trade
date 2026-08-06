@@ -95,6 +95,32 @@
   color: #334155 !important;
 }
 
+[data-theme="light"] .text-amber-200,
+[data-theme="light"] .text-amber-300,
+[data-theme="light"] .text-amber-400 {
+  color: #b45309 !important;
+}
+
+[data-theme="light"] .text-emerald-300,
+[data-theme="light"] .text-emerald-400 {
+  color: #047857 !important;
+}
+
+[data-theme="light"] .text-violet-300,
+[data-theme="light"] .text-violet-400 {
+  color: #6d28d9 !important;
+}
+
+[data-theme="light"] .text-rose-300,
+[data-theme="light"] .text-rose-400 {
+  color: #be123c !important;
+}
+
+[data-theme="light"] .text-sky-300,
+[data-theme="light"] .text-sky-400 {
+  color: #0369a1 !important;
+}
+
 /* Revert text color on solid colored badges/buttons in light mode */
 [data-theme="light"] button.bg-emerald-500,
 [data-theme="light"] button.bg-violet-600,
@@ -189,6 +215,7 @@ input.custom-input {
 [data-theme="light"] .bg-slate-950\/95,
 [data-theme="light"] .bg-slate-950\/80,
 [data-theme="light"] .bg-slate-950\/60,
+[data-theme="light"] .bg-slate-950\/50,
 [data-theme="light"] .bg-slate-950\/40,
 [data-theme="light"] .bg-slate-950\/20,
 [data-theme="light"] .bg-slate-900,
@@ -282,6 +309,15 @@ body {
   animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+
+.animate-wiggle {
+  animation: wiggle 0.3s ease-in-out infinite;
+}
+
 /* Custom Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
@@ -297,3 +333,13 @@ body {
   border-radius: 9999px;
 }
 
+
+/* Hide number input arrows globally */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}

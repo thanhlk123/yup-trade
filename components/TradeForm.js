@@ -68,7 +68,17 @@ const convertUtcDbToLocalStr = (utcDbStr) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
-export default function TradeForm({ onTradeAdded, isOpen, onClose, tradeToEdit = null, accountTabs = [], inline = false, onOpenScratchpad }) {
+const InputWrapper = ({ label, icon: Icon, children }) => (
+  <div className="group relative">
+    <label className="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+      {Icon && <Icon className="w-3.5 h-3.5 text-slate-500 group-focus-within:text-emerald-400 transition-colors" />}
+      {label}
+    </label>
+    {children}
+  </div>
+);
+
+export default function TradeForm({ onTradeAdded, isOpen, onClose, tradeToEdit = null, accountTabs = [], activeTab = 'ALL', inline = false, onOpenScratchpad }) {
   const { t } = useLanguage();
   const [formData, setFormData] = useState({
     asset: '',
@@ -245,7 +255,7 @@ export default function TradeForm({ onTradeAdded, isOpen, onClose, tradeToEdit =
         exit_time: '',
         pnl: '',
         user_notes: '',
-        trade_type: accountTabs && accountTabs.length > 0 ? accountTabs[0].key : 'LIVE',
+        trade_type: (activeTab && activeTab !== 'ALL') ? activeTab : (accountTabs && accountTabs.length > 0 ? accountTabs[0].key : 'LIVE'),
         image_url: '',
         is_lesson: 0,
       });
@@ -488,7 +498,7 @@ export default function TradeForm({ onTradeAdded, isOpen, onClose, tradeToEdit =
                              {isSelected && <Check className="w-4 h-4 text-sky-400 shrink-0" />}
                            </button>
                            
-                           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-800 border border-white/10 rounded-lg p-1 shadow-lg">
+                           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--bg-card)] border border-[var(--border-color)] rounded-lg p-1 shadow-lg">
                              <button type="button" onClick={(e) => { e.stopPropagation(); setEditingTag(opt.tag); setEditLabelInput(opt.label); }} className="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-white/10 rounded-md transition-colors" title={t('hashtagEditTitle')}>
                                <FileText className="w-3.5 h-3.5" />
                              </button>
@@ -529,17 +539,7 @@ export default function TradeForm({ onTradeAdded, isOpen, onClose, tradeToEdit =
     ? "relative w-full h-full flex flex-col"
     : "relative w-[95vw] max-w-6xl bg-white/95 dark:bg-[#0f172a]/95 backdrop-blur-3xl border border-slate-200 dark:border-white/10 rounded-3xl shadow-[0_0_60px_-15px_rgba(16,185,129,0.15)] overflow-hidden flex flex-col max-h-[95vh]";
 
-  const InputWrapper = ({ label, icon: Icon, children }) => (
-    <div className="group relative">
-      <label className="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-        {Icon && <Icon className="w-3.5 h-3.5 text-slate-500 group-focus-within:text-emerald-400 transition-colors" />}
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-
-  const inputClass = "w-full bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-white/5 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 rounded-xl px-4 py-2.5 text-slate-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 transition-all outline-none font-medium text-sm";
+  const inputClass = "w-full bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-white/5 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/50 rounded-xl px-4 py-3 text-slate-900 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 transition-all outline-none font-medium text-sm leading-normal";
 
   return (
     <div className={wrapperClass}>

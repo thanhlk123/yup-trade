@@ -34,7 +34,7 @@ export default function LanguageSelector() {
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold theme-inner-card border theme-border theme-text-main hover:opacity-90 transition cursor-pointer shadow-sm"
+        className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer shadow-sm"
         title="Change Language / Đổi ngôn ngữ"
       >
         <Globe className="w-3.5 h-3.5 text-sky-400 shrink-0" />

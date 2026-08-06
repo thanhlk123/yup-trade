@@ -73,11 +73,13 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
   // Filter States
   const [minWinRate, setMinWinRate] = useState(60);
   const [minTrades, setMinTrades] = useState(3);
+  const [minProfitFactor, setMinProfitFactor] = useState(1.5);
+  const [minTotalPnl, setMinTotalPnl] = useState(0);
   const [selectedSetup, setSelectedSetup] = useState(null);
 
   if (!stats || !stats.setups || stats.setups.length === 0) {
     return (
-      <div className="theme-card rounded-3xl p-8 flex flex-col items-center justify-center text-center h-full min-h-[360px] space-y-5 border theme-border shadow-xl">
+      <div className="theme-card rounded-3xl p-8 py-12 flex flex-col items-center text-center space-y-5 border theme-border shadow-xl">
         <div className="p-4 bg-emerald-500/10 rounded-2xl text-emerald-400 border border-emerald-500/20 shadow-inner">
           <Target className="w-10 h-10 animate-pulse" />
         </div>
@@ -128,7 +130,7 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
 
   // Filter setups to find "Golden Setups"
   const goldenSetups = setups.filter(
-    (s) => s.winRate >= minWinRate && s.total >= minTrades && s.totalPnl > 0
+    (s) => s.winRate >= minWinRate && s.total >= minTrades && s.totalPnl >= minTotalPnl && (s.profitFactor === 999 || s.profitFactor >= minProfitFactor)
   );
 
   // Helper to extract AI guidelines for a setup from history logs
@@ -147,7 +149,7 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
       
       const rawTag = (ai && ai.setup_tag && ai.setup_tag !== 'Unclassified')
         ? ai.setup_tag
-        : (t.setup_tag || 'Unclassified');
+        : (t.setup_tag || t.user_notes || 'Unclassified');
         
       return normalizeSetupTag(rawTag) === setupName;
     });
@@ -169,6 +171,16 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
           if (!keyStrengths.includes(s)) keyStrengths.push(s);
         });
       }
+      // Fallback: extract hashtags from notes
+      const notes = t.user_notes || '';
+      const tags = notes.match(/#[a-zA-Z0-9_]+/g) || [];
+      tags.forEach(tag => {
+        // exclude setup tags
+        const normalized = normalizeSetupTag(tag);
+        if (normalized === 'Discretionary' && !keyStrengths.includes(tag)) {
+          keyStrengths.push(tag);
+        }
+      });
     });
 
     const keyWeaknesses = [];
@@ -186,6 +198,16 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
           if (!keyWeaknesses.includes(w)) keyWeaknesses.push(w);
         });
       }
+      // Fallback: extract hashtags from notes
+      const notes = t.user_notes || '';
+      const tags = notes.match(/#[a-zA-Z0-9_]+/g) || [];
+      tags.forEach(tag => {
+        // exclude setup tags
+        const normalized = normalizeSetupTag(tag);
+        if (normalized === 'Discretionary' && !keyWeaknesses.includes(tag)) {
+          keyWeaknesses.push(tag);
+        }
+      });
     });
 
     return {
@@ -199,15 +221,22 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
   };
 
   return (
-    <div className={`space-y-6 ${isExpanded ? 'h-full flex flex-col' : ''}`}>
+    <div className={`theme-card border theme-border rounded-3xl shadow-xl overflow-hidden ${isExpanded ? 'h-full flex flex-col' : ''}`}>
       
-      {/* 1. Filtering Controls Card */}
-      <div className="theme-card rounded-3xl p-5 shadow-xl space-y-4">
+      {/* 1. Filtering Controls */}
+      <div className="p-6 bg-slate-500/5 border-b theme-border space-y-5">
         <div className="flex items-center justify-between pb-3 border-b theme-border">
           <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <Filter className="w-4 h-4 text-emerald-400" /> {t('setupFilterTitle')}
           </h3>
           <div className="flex items-center gap-2">
+            <button 
+              onClick={() => { setMinWinRate(0); setMinTrades(1); setMinProfitFactor(0.5); setMinTotalPnl(0); }} 
+              className="px-2.5 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-bold rounded-lg transition cursor-pointer flex items-center gap-1"
+              title="Đặt Lại Bộ Lọc"
+            >
+              {t('resetFilterBtn')}
+            </button>
             <span className="text-[10px] text-slate-400 font-medium hidden sm:inline-block">{t('findGoldenSetup')}</span>
             {!isExpanded && onExpand && (
               <button onClick={onExpand} className="p-1 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition" title={t('closeFullscreen')}>
@@ -217,12 +246,12 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Win Rate Slider */}
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
-              <span className="text-slate-400 font-semibold uppercase tracking-wider">{t('minWinRateLabel')}</span>
-              <span className="text-emerald-400 font-bold font-mono">{minWinRate}%</span>
+              <span className="text-slate-400 font-semibold uppercase tracking-wider">Tỷ lệ thắng</span>
+              <span className="text-emerald-400 font-bold font-mono">≥ {minWinRate}%</span>
             </div>
             <input
               type="range"
@@ -234,15 +263,35 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
               className="w-full h-1.5 theme-inner-card rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
             <span className="text-[10px] text-slate-500 block">
-              {t('minWinRateSub', { winRate: minWinRate })}
+              Lọc setup có tỷ lệ thắng đủ cao
+            </span>
+          </div>
+
+          {/* Profit Factor Slider */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400 font-semibold uppercase tracking-wider">Hệ số LN (PF)</span>
+              <span className="text-amber-400 font-bold font-mono">≥ {minProfitFactor}</span>
+            </div>
+            <input
+              type="range"
+              min="0.5"
+              max="5.0"
+              step="0.1"
+              value={minProfitFactor}
+              onChange={(e) => setMinProfitFactor(Number(e.target.value))}
+              className="w-full h-1.5 theme-inner-card rounded-lg appearance-none cursor-pointer accent-amber-500"
+            />
+            <span className="text-[10px] text-slate-500 block">
+              Lợi nhuận gộp / Thua lỗ gộp
             </span>
           </div>
 
           {/* Min Trades Input */}
           <div className="space-y-2">
             <div className="flex justify-between text-xs">
-              <span className="text-slate-400 font-semibold uppercase tracking-wider">{t('minTradesLabel')}</span>
-              <span className="text-emerald-400 font-bold font-mono">{t('countTrades', { count: minTrades })}</span>
+              <span className="text-slate-400 font-semibold uppercase tracking-wider">Số lệnh mẫu</span>
+              <span className="text-sky-400 font-bold font-mono">≥ {minTrades}</span>
             </div>
             <input
               type="range"
@@ -251,17 +300,37 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
               step="1"
               value={minTrades}
               onChange={(e) => setMinTrades(Number(e.target.value))}
+              className="w-full h-1.5 theme-inner-card rounded-lg appearance-none cursor-pointer accent-sky-500"
+            />
+            <span className="text-[10px] text-slate-500 block">
+              Tránh sai lệch thống kê mẫu ít
+            </span>
+          </div>
+
+          {/* Min Total PNL Input */}
+          <div className="space-y-2">
+            <div className="flex justify-between text-xs">
+              <span className="text-slate-400 font-semibold uppercase tracking-wider">PNL Ròng</span>
+              <span className="text-emerald-400 font-bold font-mono">≥ {minTotalPnl}$</span>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="5000"
+              step="50"
+              value={minTotalPnl}
+              onChange={(e) => setMinTotalPnl(Number(e.target.value))}
               className="w-full h-1.5 theme-inner-card rounded-lg appearance-none cursor-pointer accent-emerald-500"
             />
             <span className="text-[10px] text-slate-500 block">
-              {t('minTradesSub')}
+              Lợi nhuận thực tế mang lại
             </span>
           </div>
         </div>
       </div>
 
       {/* 2. Golden Setups Cards Section */}
-      <div className="space-y-3">
+      <div className="p-6 space-y-4">
         <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
           {t('goldenSetupsTitle', { count: goldenSetups.length })}
         </h4>
@@ -324,19 +393,13 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
             <p className="text-xs text-slate-400 leading-relaxed max-w-md mx-auto">
               {t('noGoldenSetupMessage')}
             </p>
-            <button
-              onClick={() => { setMinWinRate(0); setMinTrades(1); }}
-              className="px-3.5 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold transition cursor-pointer"
-            >
-              {t('resetFilterBtn')}
-            </button>
           </div>
         )}
       </div>
 
       {/* 3. Setup Rules Guide (Expandable Details) */}
       {selectedSetup && (
-        <div className="theme-card border border-amber-500/20 rounded-2xl p-5 shadow-2xl animate-fade-in space-y-4">
+        <div className="mx-6 mb-6 theme-inner-card border border-amber-500/20 rounded-2xl p-5 shadow-inner animate-fade-in space-y-4">
           <div className="flex justify-between items-center pb-3 border-b theme-border">
             <div>
               <span className="text-[10px] text-amber-400 font-bold uppercase tracking-wider">{t('aiRecommendedRules')}</span>
@@ -408,8 +471,8 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
       )}
 
       {/* 4. Complete Setups Leaderboard Table */}
-      <div className="theme-card rounded-3xl overflow-hidden shadow-xl">
-        <div className="px-6 py-4 border-b theme-border flex justify-between items-center theme-card/40">
+      <div className="border-t theme-border overflow-hidden">
+        <div className="px-6 py-4 border-b theme-border flex justify-between items-center bg-slate-500/5">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             <Target className="w-4 h-4 text-emerald-400" /> {t('setupLeaderboardTitle')}
           </h3>
@@ -459,7 +522,14 @@ export default function SetupStats({ stats, trades, isExpanded, onExpand }) {
                   >
                     {/* Setup Name */}
                     <td className="py-4 px-6 font-semibold text-white">
-                      {row.setup}
+                      <div className="flex items-center gap-2">
+                        {row.setup}
+                        {goldenSetups.some(gs => gs.setup === row.setup) && (
+                          <span className="bg-amber-500/10 text-amber-400 text-[9px] font-bold px-1.5 py-0.5 rounded border border-amber-500/20" title="Đạt tiêu chí Setup Vàng">
+                            GOLDEN
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Total Trades */}

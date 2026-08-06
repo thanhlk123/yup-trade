@@ -23,6 +23,7 @@ import {
   Image,
   X,
   FileSpreadsheet,
+  AlertTriangle,
   Zap,
   MoreHorizontal,
   Settings,
@@ -32,17 +33,16 @@ import {
   Moon,
   Trees,
   BarChart2,
-  Target
+  Target,
+  BrainCircuit
 } from 'lucide-react';
 import TradeForm from '@/components/TradeForm';
 import SetupStats from '@/components/SetupStats';
-import AIInsights from '@/components/AIInsights';
-import BehaviorHabitAnalysis from '@/components/BehaviorHabitAnalysis';
+import TradingImprovementEngine from '@/components/TradingImprovementEngine';
+import BehaviorIntelligence from '@/components/BehaviorIntelligence';
 
 import ImportCSVModal from '@/components/ImportCSVModal';
-import ProgressDashboard from '@/components/ProgressDashboard';
 import TradingRules from '@/components/TradingRules';
-import MindsetJournal from '@/components/MindsetJournal';
 
 import WhatIfSimulator from '@/components/WhatIfSimulator';
 import TradingViewChart from '@/components/TradingViewChart';
@@ -52,7 +52,16 @@ import GlobalErrorHandler from '@/components/GlobalErrorHandler';
 import LanguageSelector from '@/components/LanguageSelector';
 import { LanguageProvider, useLanguage } from '@/lib/i18n/LanguageContext';
 import { parseImageUrls, formatImagesForDb } from '@/lib/imageUtils';
-import { getTradeTypeBadge, hasContextNotes, isDcaTrade, extractTechnicalWeaknesses, extractTechnicalStrengths } from '@/lib/tradeUtils';
+import { 
+  getTradeTypeBadge, 
+  hasContextNotes, 
+  extractTechnicalStrengths, 
+  extractTechnicalWeaknesses, 
+  extractPsychologicalMistakes, 
+  extractLessons,
+  isDcaTrade,
+  isSymbolSupported
+} from '@/lib/tradeUtils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 
 function DashboardContent() {
@@ -68,17 +77,28 @@ function DashboardContent() {
   const [isStudioModalOpen, setIsStudioModalOpen] = useState(false);
   const [expandedTradeId, setExpandedTradeId] = useState(null);
   const [activeChartTab, setActiveChartTab] = useState('equity');
-  const [activeTab, setActiveTab] = useState('LIVE'); // 'LIVE' | 'BACKTEST' | 'ALL' | custom
+  const [activeTab, setActiveTabState] = useState('LIVE'); // 'LIVE' | 'BACKTEST' | 'ALL' | custom
   const [tradeToGenerateImage, setTradeToGenerateImage] = useState(null);
   
-  const DEFAULT_ACCOUNT_TABS = [
-    { key: 'LIVE', label: 'Live Account', color: 'emerald' },
-    { key: 'BACKTEST', label: 'Backtest', color: 'blue' },
-    { key: 'ALL', label: 'Tất Cả Lệnh', color: 'slate', isAll: true }
-  ];
-
-  const [accountTabs, setAccountTabs] = useState(DEFAULT_ACCOUNT_TABS);
+  const [accountTabs, setAccountTabs] = useState([]);
   const [isAccountTabsLoaded, setIsAccountTabsLoaded] = useState(false);
+
+  // Sync activeTab with localStorage
+  const setActiveTab = (tab) => {
+    setActiveTabState(tab);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ai_trading_active_account_tab', tab);
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedTab = localStorage.getItem('ai_trading_active_account_tab');
+      if (savedTab) {
+        setActiveTabState(savedTab);
+      }
+    }
+  }, []);
 
   const [isAddTabModalOpen, setIsAddTabModalOpen] = useState(false);
   const [newTabName, setNewTabName] = useState('');
@@ -86,82 +106,157 @@ function DashboardContent() {
 
   const [editingTabKey, setEditingTabKey] = useState(null);
   const [editingTabName, setEditingTabName] = useState('');
+  
+  const [draggedTab, setDraggedTab] = useState(null);
+  const [dragOverTab, setDragOverTab] = useState(null);
+  const [heldTab, setHeldTab] = useState(null);
+  const holdTimeout = useRef(null);
 
-  useEffect(() => {
+  const loadAccountTabs = async () => {
     try {
-      let loadedTabs = DEFAULT_ACCOUNT_TABS;
-      const saved = localStorage.getItem('ai_trading_account_tabs');
-      if (saved) {
-        loadedTabs = JSON.parse(saved);
-        setAccountTabs(loadedTabs);
-      }
-      if (loadedTabs && loadedTabs.length > 0) {
-        setActiveTab(loadedTabs[0].key);
+      const res = await fetch('/api/account-tabs');
+      const data = await res.json();
+      if (data.success && data.data) {
+        // Map from DB structure to frontend structure
+        const mappedTabs = data.data.map(t => ({
+          key: t.tab_key,
+          label: t.label,
+          color: t.color,
+          isAll: t.is_all === 1,
+          order: t.display_order
+        }));
+        setAccountTabs(mappedTabs);
+        if (mappedTabs.length > 0) {
+          let currentTab = typeof window !== 'undefined' ? localStorage.getItem('ai_trading_active_account_tab') : 'LIVE';
+          if (!currentTab) currentTab = 'LIVE';
+
+          let tabToSet = currentTab;
+          const isSavedTabInMapped = mappedTabs.some(t => t.key === currentTab);
+          
+          if (currentTab === 'LIVE' || !isSavedTabInMapped) {
+            tabToSet = mappedTabs[0].key;
+          }
+          
+          setActiveTab(tabToSet);
+        }
       }
     } catch (e) {
-      console.error(e);
+      console.error('Failed to load account tabs:', e);
     } finally {
       setIsAccountTabsLoaded(true);
     }
-  }, []);
-
-  useEffect(() => {
-    if (isAccountTabsLoaded && typeof window !== 'undefined') {
-      localStorage.setItem('ai_trading_account_tabs', JSON.stringify(accountTabs));
-    }
-  }, [accountTabs, isAccountTabsLoaded]);
-
-  const handleAddAccountTab = () => {
-    if (!newTabName.trim()) return;
-    const cleanKey = 'TAB_' + newTabName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '_');
-    const newTabObj = {
-      key: cleanKey,
-      label: newTabName.trim(),
-      color: newTabColor,
-    };
-
-    setAccountTabs((prev) => {
-      const allIndex = prev.findIndex((t) => t.isAll);
-      if (allIndex !== -1) {
-        const updated = [...prev];
-        updated.splice(allIndex, 0, newTabObj);
-        return updated;
-      }
-      return [...prev, newTabObj];
-    });
-
-    setActiveTab(cleanKey);
-    setNewTabName('');
-    setIsAddTabModalOpen(false);
   };
 
-  const handleDeleteAccountTab = (tabToDelete) => {
+  useEffect(() => {
+    loadAccountTabs();
+  }, []);
+
+  const handleAddAccountTab = async () => {
+    if (!newTabName.trim()) return;
+    const cleanKey = 'TAB_' + newTabName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '_');
+    
+    // Find highest order to place new tab before 'ALL' tab
+    const allTab = accountTabs.find(t => t.isAll);
+    const highestOrderBeforeAll = accountTabs
+      .filter(t => !t.isAll)
+      .reduce((max, t) => Math.max(max, t.order || 0), -1);
+      
+    const newOrder = highestOrderBeforeAll + 1;
+    
+    // If 'ALL' tab exists, push its order + 1 or make sure new tab is before it
+    // Actually we can just update 'ALL' tab order if needed, but for now just inserting with order is fine.
+
+    try {
+      const res = await fetch('/api/account-tabs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: cleanKey,
+          label: newTabName.trim(),
+          color: newTabColor,
+          isAll: false,
+          display_order: newOrder
+        })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        await loadAccountTabs();
+        setActiveTab(cleanKey);
+        setNewTabName('');
+        setIsAddTabModalOpen(false);
+      } else {
+        alert(data.error || 'Failed to add tab');
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Network error when adding tab');
+    }
+  };
+
+  const handleDeleteAccountTab = async (tabToDelete) => {
     if (tabToDelete.isAll) return;
     const confirmMsg = t('deleteTabConfirm', { name: tabToDelete.label });
 
     if (confirm(confirmMsg)) {
-      setAccountTabs((prev) => prev.filter((t) => t.key !== tabToDelete.key));
-      if (activeTab === tabToDelete.key) {
-        setActiveTab('ALL');
+      try {
+        const res = await fetch(`/api/account-tabs?key=${tabToDelete.key}`, { method: 'DELETE' });
+        const data = await res.json();
+        
+        if (data.success) {
+          // Clear associated localStorage data (like drawings) for deleted trades
+          if (data.deletedTradeIds && data.deletedTradeIds.length > 0) {
+            data.deletedTradeIds.forEach(id => {
+              localStorage.removeItem(`tv_drawings_v2_${id}`);
+            });
+          }
+
+          await loadAccountTabs();
+          if (activeTab === tabToDelete.key) {
+            setActiveTab('ALL');
+          }
+          
+          // Refresh dashboard data so the deleted trades disappear from the UI
+          fetchDashboardData();
+        } else {
+          alert(data.error || 'Failed to delete tab');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Network error when deleting tab');
       }
     }
   };
 
-  const handleSaveInlineRename = () => {
+  const handleSaveInlineRename = async () => {
     if (editingTabKey && editingTabName.trim()) {
-      setAccountTabs((prev) => 
-        prev.map(t => 
-          t.key === editingTabKey 
-            ? { ...t, label: editingTabName.trim() }
-            : t
-        )
-      );
+      try {
+        const res = await fetch('/api/account-tabs', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tab_key: editingTabKey,
+            label: editingTabName.trim()
+          })
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+          await loadAccountTabs();
+        } else {
+          alert(data.error || 'Failed to rename tab');
+        }
+      } catch (e) {
+        console.error(e);
+        alert('Network error when renaming tab');
+      }
     }
     setEditingTabKey(null);
   };
   const [showLessonsOnly, setShowLessonsOnly] = useState(false);
   const [selectedStrengthFilter, setSelectedStrengthFilter] = useState(null);
   const [selectedWeaknessFilter, setSelectedWeaknessFilter] = useState(null);
+  const [behaviorFilterIds, setBehaviorFilterIds] = useState(null); // new: behavior filter by ID set
   const [zoomImages, setZoomImages] = useState([]);
   const [zoomImageIndex, setZoomImageIndex] = useState(0);
   const [isCarouselOpen, setIsCarouselOpen] = useState(false);
@@ -182,8 +277,16 @@ function DashboardContent() {
   const [isTodayReviewOpen, setIsTodayReviewOpen] = useState(false);
   const [loadingTodayReview, setLoadingTodayReview] = useState(false);
 
+  const [monthlyReview, setMonthlyReview] = useState(null);
+  const [isMonthlyReviewOpen, setIsMonthlyReviewOpen] = useState(false);
+  const [loadingMonthlyReview, setLoadingMonthlyReview] = useState(false);
+  const [isReviewMenuOpen, setIsReviewMenuOpen] = useState(false);
+
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [showCustomDate, setShowCustomDate] = useState(false);
+  const [exportStartDate, setExportStartDate] = useState('');
+  const [exportEndDate, setExportEndDate] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [weeklyTradeCount, setWeeklyTradeCount] = useState(0);
   const [monthlyTradeCount, setMonthlyTradeCount] = useState(0);
@@ -192,7 +295,6 @@ function DashboardContent() {
   const [selectedTradeForChart, setSelectedTradeForChart] = useState(null);
   const chartSectionRef = useRef(null);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
-  const [activeWidgets, setActiveWidgets] = useState(['ai-insights', 'behavior', 'progress-dashboard']);
   const [expandedWidget, setExpandedWidget] = useState(null);
   const [isWidgetSettingsOpen, setIsWidgetSettingsOpen] = useState(false);
   const [theme, setTheme] = useState('dark'); // 'dark' | 'light'
@@ -261,12 +363,6 @@ function DashboardContent() {
     return () => window.removeEventListener('tv_drawings_updated', handleDrawingsUpdated);
   }, []);
 
-  const toggleWidget = (widgetId) => {
-    setActiveWidgets(prev => 
-      prev.includes(widgetId) ? prev.filter(w => w !== widgetId) : [...prev, widgetId]
-    );
-  };
-  
   // Close dropdowns & modals when clicking outside or pressing Esc
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -276,12 +372,16 @@ function DashboardContent() {
       if (!event.target.closest('.widget-settings-container')) {
         setIsWidgetSettingsOpen(false);
       }
+      if (!event.target.closest('.smart-review-container')) {
+        setIsReviewMenuOpen(false);
+      }
     };
     
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
         setIsMoreMenuOpen(false);
         setIsWidgetSettingsOpen(false);
+        setIsReviewMenuOpen(false);
         setExpandedWidget(null);
       }
     };
@@ -297,21 +397,27 @@ function DashboardContent() {
   const renderExpandedWidget = () => {
     if (!expandedWidget) return null;
     switch (expandedWidget) {
-      case 'ai-insights': return <AIInsights trades={trades} isExpanded={true} />;
-      case 'behavior': return (
-        <BehaviorHabitAnalysis 
-          trades={trades} 
-          selectedStrengthFilter={selectedStrengthFilter}
-          setSelectedStrengthFilter={setSelectedStrengthFilter}
-          selectedWeaknessFilter={selectedWeaknessFilter}
-          setSelectedWeaknessFilter={setSelectedWeaknessFilter}
-          isExpanded={true}
-        />
+      case 'ai-insights': return (
+        <div className="theme-card rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col">
+          <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          
+          <div className="flex items-center justify-between border-b theme-border pb-4 relative z-10">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <BrainCircuit className="w-5 h-5 text-emerald-400" /> {t('aiInsightsTitle')}
+            </h3>
+            <button onClick={() => setExpandedWidget(null)} className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition">
+              <Minimize2 className="w-4 h-4 text-emerald-400" />
+            </button>
+          </div>
+
+          <div className="mt-4 mb-2 relative z-10 flex-1 overflow-y-auto pr-2">
+            <TradingImprovementEngine trades={trades} activeTab={activeTab} />
+          </div>
+        </div>
       );
       case 'setup-stats': return <SetupStats stats={stats} trades={trades} isExpanded={true} />;
       case 'progress-dashboard': return <ProgressDashboard activeTab={activeTab} isExpanded={true} />;
       case 'trading-rules': return <TradingRules trades={trades} activeTab={activeTab} onViolationChange={setRuleViolations} isExpanded={true} />;
-      case 'mindset-journal': return <MindsetJournal isExpanded={true} />;
       case 'context-scratchpad': return <ContextScratchpad isExpanded={true} />;
       default: return null;
     }
@@ -356,13 +462,19 @@ function DashboardContent() {
     }
   };
 
+  const latestFetchRef = useRef(null);
+
   const fetchDashboardData = async (tab = activeTab) => {
     try {
+      const fetchId = Date.now();
+      latestFetchRef.current = fetchId;
       setLoading(true);
       const [tradesRes, statsRes] = await Promise.all([
         fetch(`/api/trades?type=${tab}`),
         fetch(`/api/stats?type=${tab}`)
       ]);
+
+      if (latestFetchRef.current !== fetchId) return;
 
       const tradesData = await tradesRes.json();
       const statsData = await statsRes.json();
@@ -381,15 +493,21 @@ function DashboardContent() {
   const getFilteredTrades = (allTrades) => {
     let result = showLessonsOnly ? allTrades.filter(t => t.is_lesson === 1) : allTrades;
 
+    // Behavior Intelligence filter (ID-based, from BehaviorIntelligence component)
+    if (behaviorFilterIds && behaviorFilterIds.length > 0) {
+      const idSet = new Set(behaviorFilterIds);
+      result = result.filter(t => idSet.has(t.id));
+    }
+
     if (selectedStrengthFilter) {
-      result = result.filter(t => {
+      result = result.filter(tr => {
         const tradeStrengths = new Set();
         
-        const techStrengths = extractTechnicalStrengths(t);
+        const techStrengths = extractTechnicalStrengths(tr, t);
         techStrengths.forEach(s => tradeStrengths.add(s));
 
-        if (hasContextNotes(t)) {
-          let ai = t.ai_evaluation;
+        if (hasContextNotes(tr)) {
+          let ai = tr.ai_evaluation;
           if (typeof ai === 'string') {
             try { ai = JSON.parse(ai); } catch (e) {}
           }
@@ -403,20 +521,20 @@ function DashboardContent() {
     }
 
     if (selectedWeaknessFilter) {
-      result = result.filter(t => {
+      result = result.filter(tr => {
         const tradeWeaknesses = new Set();
 
         // 1. DCA & Technical Weaknesses (All trades)
-        if (isDcaTrade(t)) {
-          tradeWeaknesses.add("DCA mất kiểm soát (Nhồi lệnh / Gồng lỗ)");
+        if (isDcaTrade(tr)) {
+          tradeWeaknesses.add(t('techUncontrolledDca'));
         }
         
-        const techWeaknesses = extractTechnicalWeaknesses(t);
+        const techWeaknesses = extractTechnicalWeaknesses(tr, t);
         techWeaknesses.forEach(w => tradeWeaknesses.add(w));
 
         // 2. AI Weaknesses (Only if trade has context notes)
-        if (hasContextNotes(t)) {
-          let ai = t.ai_evaluation;
+        if (hasContextNotes(tr)) {
+          let ai = tr.ai_evaluation;
           if (typeof ai === 'string') {
             try { ai = JSON.parse(ai); } catch (e) {}
           }
@@ -503,6 +621,25 @@ function DashboardContent() {
     }
   };
 
+  const handleMonthlyReview = async () => {
+    try {
+      setLoadingMonthlyReview(true);
+      const res = await fetch(`/api/monthly-review?type=${activeTab}&lang=${language}`);
+      const result = await res.json();
+      if (result.success) {
+        setMonthlyReview(result.data);
+        setIsMonthlyReviewOpen(true);
+      } else {
+        alert(result.error || 'Không thể tạo nhận xét tháng lúc này.');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Lỗi kết nối mạng khi tải nhận xét tháng.');
+    } finally {
+      setLoadingMonthlyReview(false);
+    }
+  };
+
   const handleRecentReview = async () => {
     try {
       setLoadingRecentReview(true);
@@ -574,7 +711,7 @@ function DashboardContent() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [activeTab, showLessonsOnly, selectedStrengthFilter, selectedWeaknessFilter]);
+  }, [activeTab, showLessonsOnly, selectedStrengthFilter, selectedWeaknessFilter, behaviorFilterIds]);
 
   useEffect(() => {
     const displayedCount = getFilteredTrades(trades).length;
@@ -582,7 +719,7 @@ function DashboardContent() {
     if (currentPage > totalPages) {
       setCurrentPage(totalPages);
     }
-  }, [trades, showLessonsOnly, selectedStrengthFilter, selectedWeaknessFilter]);
+  }, [trades, showLessonsOnly, selectedStrengthFilter, selectedWeaknessFilter, behaviorFilterIds]);
 
   useEffect(() => {
     const today = Date.now();
@@ -662,6 +799,28 @@ function DashboardContent() {
       filteredTrades = trades.filter(t => new Date(t.trade_time) >= thirtyDaysAgo);
     } else if (range === 'RECENT') {
       filteredTrades = trades.slice(0, 20);
+    } else if (range === 'TODAY') {
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      filteredTrades = trades.filter(t => new Date(t.trade_time) >= startOfDay);
+    } else if (range === 'YESTERDAY') {
+      const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      const endOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      filteredTrades = trades.filter(t => {
+        const d = new Date(t.trade_time);
+        return d >= startOfYesterday && d <= endOfYesterday;
+      });
+    } else if (range === 'CUSTOM') {
+      if (!exportStartDate || !exportEndDate) {
+        alert('Vui lòng chọn đầy đủ Từ ngày và Đến ngày!');
+        return;
+      }
+      const start = new Date(exportStartDate);
+      const end = new Date(exportEndDate);
+      end.setHours(23, 59, 59, 999);
+      filteredTrades = trades.filter(t => {
+        const d = new Date(t.trade_time);
+        return d >= start && d <= end;
+      });
     }
 
     if (filteredTrades.length === 0) {
@@ -1312,13 +1471,13 @@ function DashboardContent() {
 
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Theme Switcher 2-Way Control */}
-          <div className={`flex items-center p-1 rounded-xl border ${themeStyles.switcherBg} shadow-inner mr-2`}>
+          <div className={`flex items-center p-1 rounded-xl border bg-slate-200/50 dark:bg-slate-800/50 border-slate-300 dark:border-slate-700 shadow-inner mr-2`}>
             <button
               onClick={() => changeTheme('dark')}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
                 theme === 'dark' 
                   ? 'bg-slate-800 text-emerald-400 shadow-sm border border-emerald-500/20' 
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
               }`}
               title="Midnight Sapphire"
             >
@@ -1331,7 +1490,7 @@ function DashboardContent() {
               className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
                 theme === 'light' 
                   ? 'bg-white text-blue-600 shadow-sm border border-slate-300 font-extrabold' 
-                  : 'text-slate-400 hover:text-slate-700'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
               }`}
               title="Soft Slate Light"
             >
@@ -1345,8 +1504,8 @@ function DashboardContent() {
 
           {/* New Feature: Studio TradingView Live & Position Box Visualizer */}
           <Link
-            href="/studio"
-            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 rounded-xl text-xs font-black transition shadow-lg shadow-teal-500/20 cursor-pointer"
+            href={`/studio${activeTab && activeTab !== 'ALL' ? `?account=${activeTab}` : ''}`}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-teal-500/20 cursor-pointer"
             title={t('tradingViewStudio')}
           >
             <BarChart2 className="w-4 h-4 font-bold" />
@@ -1358,7 +1517,7 @@ function DashboardContent() {
           {/* Main Primary CTA: Nhập Nhật Ký từ CSV */}
           <button
             onClick={() => setIsCSVImportOpen(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-500/20 cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-emerald-500/20 cursor-pointer"
           >
             <FileSpreadsheet className="w-4 h-4" /> {t('importCSV')}
           </button>
@@ -1369,7 +1528,7 @@ function DashboardContent() {
               setEditingTrade(null);
               setIsFormOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-bold transition shadow cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-slate-700 text-emerald-600 dark:text-emerald-400 border border-emerald-500/40 rounded-xl text-xs font-bold transition shadow cursor-pointer"
             title={t('addManual')}
           >
             <Plus className="w-4 h-4" />
@@ -1377,27 +1536,74 @@ function DashboardContent() {
           </button>
 
           {trades.length > 0 && (
-            <>
-              {/* Review Hôm Nay */}
+            <div className="relative smart-review-container z-50">
               <button
-                onClick={handleTodayReview}
-                disabled={loadingTodayReview}
-                className="flex items-center gap-2 px-3.5 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/20 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsReviewMenuOpen(!isReviewMenuOpen);
+                }}
+                className="flex items-center gap-2 px-4 py-2.5 bg-purple-100 dark:bg-purple-500/20 hover:bg-purple-200 dark:hover:bg-purple-500/30 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-500/30 rounded-xl text-xs font-bold transition shadow-[0_0_15px_rgba(168,85,247,0.15)] cursor-pointer"
               >
-                <Award className="w-4 h-4 text-emerald-400" /> 
-                {loadingTodayReview ? t('reviewing') : t('reviewToday')}
+                <Brain className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                AI Smart Review
+                <ChevronDown className="w-3 h-3 text-purple-600 dark:text-purple-400" />
               </button>
 
-              {/* Review Tuần */}
-              <button
-                onClick={handleWeeklyReview}
-                disabled={loadingWeeklyReview}
-                className="flex items-center gap-2 px-3.5 py-2.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 rounded-xl text-xs font-bold transition cursor-pointer disabled:opacity-50"
-              >
-                <Brain className="w-4 h-4 text-purple-400" /> 
-                {loadingWeeklyReview ? t('reviewing') : t('reviewWeek')}
-              </button>
-            </>
+              {isReviewMenuOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-slate-900/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden p-2 space-y-1">
+                  
+                  <div className="px-3 py-2 border-b border-white/5 mb-1">
+                    <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">{t('reviewSelectTimeframe')}</p>
+                  </div>
+
+                  <button 
+                    onClick={() => { handleTodayReview(); setIsReviewMenuOpen(false); }}
+                    disabled={loadingTodayReview}
+                    className="w-full flex flex-col px-3 py-2 hover:bg-slate-800 rounded-xl text-left cursor-pointer transition disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-2 text-sm font-bold text-emerald-400">
+                      <Award className="w-4 h-4" /> {t('reviewTodayTitle')}
+                    </div>
+                    <p className="text-[10px] text-slate-500 ml-6 mt-0.5">{t('reviewTodayDesc')}</p>
+                  </button>
+
+                  <button 
+                    onClick={() => { handleWeeklyReview(); setIsReviewMenuOpen(false); }}
+                    disabled={loadingWeeklyReview}
+                    className="w-full flex flex-col px-3 py-2 hover:bg-slate-800 rounded-xl text-left cursor-pointer transition disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-2 text-sm font-bold text-sky-400">
+                      <Calendar className="w-4 h-4" /> {t('reviewWeeklyTitle')}
+                    </div>
+                    <p className="text-[10px] text-slate-500 ml-6 mt-0.5">{t('reviewWeeklyDesc')}</p>
+                  </button>
+
+                  <button 
+                    onClick={() => { handleMonthlyReview(); setIsReviewMenuOpen(false); }}
+                    disabled={loadingMonthlyReview}
+                    className="w-full flex flex-col px-3 py-2 hover:bg-slate-800 rounded-xl text-left cursor-pointer transition disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-2 text-sm font-bold text-purple-400">
+                      <BarChart2 className="w-4 h-4" /> {t('reviewMonthlyTitle')}
+                    </div>
+                    <p className="text-[10px] text-slate-500 ml-6 mt-0.5">{t('reviewMonthlyDesc')}</p>
+                  </button>
+
+                  <div className="my-1 border-t border-white/5"></div>
+
+                  <button 
+                    onClick={() => { handleRecentReview(); setIsReviewMenuOpen(false); }}
+                    disabled={loadingRecentReview}
+                    className="w-full flex flex-col px-3 py-2 hover:bg-slate-800 rounded-xl text-left cursor-pointer transition disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-2 text-sm font-bold text-amber-400">
+                      <Sparkles className="w-4 h-4" /> {t('reviewRecent20Title')}
+                    </div>
+                    <p className="text-[10px] text-slate-500 ml-6 mt-0.5">{t('reviewRecent20Desc')}</p>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
 
           {/* More Actions Dropdown */}
@@ -1407,7 +1613,7 @@ function DashboardContent() {
                 e.stopPropagation();
                 setIsMoreMenuOpen(!isMoreMenuOpen);
               }}
-              className="p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition border border-white/5 cursor-pointer"
+              className="p-2.5 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white rounded-xl transition border border-slate-200 dark:border-white/5 cursor-pointer shadow-sm"
               title={t('moreTools')}
             >
               <MoreHorizontal className="w-4 h-4" />
@@ -1424,13 +1630,6 @@ function DashboardContent() {
                       className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-800 rounded-xl text-xs text-slate-300 hover:text-violet-400 transition text-left cursor-pointer"
                     >
                       <Zap className="w-4 h-4 text-violet-400" /> {t('whatIfSimulator')}
-                    </button>
-
-                    <button 
-                      onClick={() => { handleRecentReview(); setIsMoreMenuOpen(false); }} 
-                      className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-800 rounded-xl text-xs text-slate-300 hover:text-amber-400 transition text-left cursor-pointer"
-                    >
-                      <Sparkles className="w-4 h-4 text-amber-400" /> {t('review20Trades')}
                     </button>
 
                     <div className="my-1 border-t border-white/5"></div>
@@ -1452,8 +1651,41 @@ function DashboardContent() {
       {/* Dynamic Tab Switcher */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8 pb-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className={`flex backdrop-blur-md p-1.5 rounded-2xl w-full md:max-w-3xl text-xs sm:text-sm font-semibold flex-wrap items-center gap-1.5 transition-colors duration-300 ${themeStyles.switcherBg} border`}>
-          {accountTabs.map((tab) => {
+          
+          {/* Render "Tất Cả Lệnh" as fixed on the left */}
+          {(() => {
+            const allTab = accountTabs.find(t => t.isAll);
+            if (!allTab) return null;
+            
+            const isActive = activeTab === allTab.key;
+            const activeStyles = {
+              slate: theme === 'light'
+                ? 'bg-white text-slate-900 shadow-md font-extrabold border border-slate-300'
+                : 'bg-slate-800 text-white shadow-sm font-extrabold border border-slate-700'
+            };
+            const inactiveStyle = theme === 'light'
+              ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-300/50 font-bold'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/50 font-semibold';
+              
+            return (
+              <div key={allTab.key} className="relative group flex-1 min-w-[105px]">
+                <button
+                  onClick={() => setActiveTab(allTab.key)}
+                  className={`w-full py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    isActive ? (activeStyles[allTab.color] || activeStyles.slate) : inactiveStyle
+                  }`}
+                >
+                  <span>{t('tabAll')}</span>
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* Render draggable tabs */}
+          {accountTabs.filter(t => !t.isAll).map((tab) => {
             const isActive = activeTab === tab.key;
+            const isDragging = draggedTab?.key === tab.key;
+            const isDragOver = dragOverTab?.key === tab.key;
             
             const activeStyles = {
               emerald: theme === 'light'
@@ -1508,7 +1740,85 @@ function DashboardContent() {
             };
 
             return (
-              <div key={tab.key} className="relative group flex-1 min-w-[105px]">
+              <div 
+                key={tab.key} 
+                className={`relative group flex-1 min-w-[105px] transition-all duration-200 ${isDragging ? 'opacity-50' : 'opacity-100'} ${isDragOver && draggedTab?.key !== tab.key ? 'scale-105 outline-dashed outline-2 outline-emerald-500/50 outline-offset-2 rounded-xl' : ''} ${heldTab === tab.key ? 'animate-wiggle' : ''}`}
+                draggable
+                onPointerDown={(e) => {
+                  holdTimeout.current = setTimeout(() => {
+                    setHeldTab(tab.key);
+                  }, 150);
+                }}
+                onPointerUp={() => {
+                  clearTimeout(holdTimeout.current);
+                  setHeldTab(null);
+                }}
+                onPointerLeave={() => {
+                  clearTimeout(holdTimeout.current);
+                  setHeldTab(null);
+                }}
+                onDragStart={(e) => {
+                  setDraggedTab(tab);
+                  setHeldTab(tab.key);
+                  // Ensure drag effect is allowed
+                  if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                  }
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  if (draggedTab && draggedTab.key !== tab.key) {
+                    setDragOverTab(tab);
+                  }
+                }}
+                onDragLeave={() => {
+                  if (dragOverTab?.key === tab.key) {
+                    setDragOverTab(null);
+                  }
+                }}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  if (!draggedTab || draggedTab.key === tab.key) {
+                    setDraggedTab(null);
+                    setDragOverTab(null);
+                    return;
+                  }
+                  
+                  const otherTabs = accountTabs.filter(t => !t.isAll);
+                  const draggedIndex = otherTabs.findIndex(t => t.key === draggedTab.key);
+                  const targetIndex = otherTabs.findIndex(t => t.key === tab.key);
+                  
+                  const newTabs = [...otherTabs];
+                  newTabs.splice(draggedIndex, 1);
+                  newTabs.splice(targetIndex, 0, draggedTab);
+                  
+                  const updatedTabs = newTabs.map((t, i) => ({ ...t, order: i + 1 }));
+                  const allTab = accountTabs.find(t => t.isAll);
+                  const newAccountTabs = allTab ? [allTab, ...updatedTabs] : updatedTabs;
+                  
+                  // Optimistic update
+                  setAccountTabs(newAccountTabs);
+                  setDraggedTab(null);
+                  setDragOverTab(null);
+                  
+                  // Sync to API
+                  try {
+                    const payload = updatedTabs.map(t => ({ tab_key: t.key, display_order: t.order }));
+                    await fetch('/api/account-tabs', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(payload)
+                    });
+                  } catch (error) {
+                    console.error("Failed to sync tab order", error);
+                  }
+                }}
+                onDragEnd={() => {
+                  setDraggedTab(null);
+                  setDragOverTab(null);
+                  setHeldTab(null);
+                }}
+              >
                 {editingTabKey === tab.key ? (
                   <input
                     type="text"
@@ -1527,13 +1837,11 @@ function DashboardContent() {
                   <button
                     onClick={() => setActiveTab(tab.key)}
                     onDoubleClick={(e) => {
-                      if (!tab.isAll) {
-                        e.stopPropagation();
-                        setEditingTabKey(tab.key);
-                        setEditingTabName(tab.label);
-                      }
+                      e.stopPropagation();
+                      setEditingTabKey(tab.key);
+                      setEditingTabName(tab.label);
                     }}
-                    title={language === 'en' ? "Double click to rename" : "Nháy đúp để đổi tên"}
+                    title={language === 'en' ? "Double click to rename, drag to reorder" : "Nháy đúp để đổi tên, giữ để kéo thả"}
                     className={`w-full py-2 px-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       isActive
                         ? activeStyles[tab.color] || activeStyles.emerald
@@ -1544,7 +1852,7 @@ function DashboardContent() {
                   </button>
                 )}
 
-                {!tab.isAll && accountTabs.length > 2 && (
+                {accountTabs.length > 2 && (
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -1748,8 +2056,9 @@ function DashboardContent() {
                           <XAxis dataKey="name" stroke="#64748b" fontSize={11} tickLine={false} />
                           <YAxis stroke="#64748b" fontSize={11} tickLine={false} />
                           <Tooltip 
-                            contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px' }}
-                            labelClassName="text-slate-400 text-xs font-semibold"
+                            contentStyle={{ backgroundColor: 'var(--bg-input)', borderColor: 'var(--border-color)', borderRadius: '12px' }}
+                            labelStyle={{ color: 'var(--text-sub)', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}
+                            labelClassName=""
                             itemStyle={{ fontSize: '13px' }}
                           />
                           <Area type="monotone" dataKey="equity" stroke={equityColor} strokeWidth={2} fillOpacity={1} fill="url(#colorEquity)" name="Equity (USD)" />
@@ -1786,8 +2095,9 @@ function DashboardContent() {
                             <YAxis yAxisId="left" orientation="left" stroke="#10b981" fontSize={10} tickLine={false} />
                             <YAxis yAxisId="right" orientation="right" stroke="#3b82f6" domain={[0, 100]} fontSize={10} tickLine={false} />
                             <Tooltip 
-                              contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', borderRadius: '12px' }}
-                              labelClassName="text-white text-xs font-semibold"
+                              contentStyle={{ backgroundColor: 'var(--bg-input)', borderColor: 'var(--border-color)', borderRadius: '12px' }}
+                              labelStyle={{ color: 'var(--text-sub)', fontSize: '12px', fontWeight: '600', marginBottom: '4px' }}
+                              labelClassName=""
                               itemStyle={{ fontSize: '13px' }}
                             />
                             <Bar yAxisId="left" dataKey="totalPnl" name="Net PnL (USD)" fill="#10b981" radius={[4, 4, 0, 0]} />
@@ -1852,18 +2162,25 @@ function DashboardContent() {
                     </div>
                   </div>
 
-                  {(selectedStrengthFilter || selectedWeaknessFilter) && (
+                  {(selectedStrengthFilter || selectedWeaknessFilter || (behaviorFilterIds && behaviorFilterIds.length > 0)) && (
                     <div className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl mb-4 text-xs ${themeStyles.innerCard}`}>
                       <span className={themeStyles.subtext}>
                         {t('filteringBehavior')} {' '}
-                        <strong className={selectedStrengthFilter ? "text-emerald-500 dark:text-emerald-400 font-bold" : "text-rose-500 dark:text-rose-400 font-bold"}>
-                          {selectedStrengthFilter || selectedWeaknessFilter}
-                        </strong>
+                        {(selectedStrengthFilter || selectedWeaknessFilter) ? (
+                          <strong className={selectedStrengthFilter ? "text-emerald-500 dark:text-emerald-400 font-bold" : "text-rose-500 dark:text-rose-400 font-bold"}>
+                            {selectedStrengthFilter || selectedWeaknessFilter}
+                          </strong>
+                        ) : (
+                          <strong className="text-violet-500 dark:text-violet-400 font-bold">
+                            AI Behavior Intelligence ({behaviorFilterIds.length} trades)
+                          </strong>
+                        )}
                       </span>
                       <button 
                         onClick={() => {
                           setSelectedStrengthFilter(null);
                           setSelectedWeaknessFilter(null);
+                          setBehaviorFilterIds(null);
                         }}
                         className={`text-[10px] px-2 py-1 rounded-lg transition cursor-pointer font-bold ${themeStyles.innerCard} ${themeStyles.titleText} hover:opacity-80`}
                       >
@@ -1883,7 +2200,7 @@ function DashboardContent() {
                       return (
                         <div 
                           key={trade.id} 
-                          className={`rounded-2xl overflow-hidden transition-all duration-300 ${themeStyles.tradeCardBg} ${
+                          className={`rounded-2xl relative transition-all duration-300 ${themeStyles.tradeCardBg} ${
                             isExpanded ? 'ring-1 ring-emerald-500/20 shadow-xl' : ''
                           }`}
                         >
@@ -1929,25 +2246,69 @@ function DashboardContent() {
 
                             {/* PnL & Expand */}
                             <div className="flex items-center gap-2">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setTradeToGenerateImage(trade);
-                                }}
-                                title="Gen Ảnh Chart Mới"
-                                className="flex items-center gap-1 px-2.5 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/20 rounded-lg text-[10px] font-bold transition cursor-pointer"
-                              >
-                                <Image className="w-3 h-3 text-sky-500" /> Gen Ảnh
-                              </button>
+                              {(() => {
+                                const hasAsset = trade.asset && trade.asset.trim() !== '';
+                                const hasEntry = trade.entry_price !== null && trade.entry_price !== undefined && !isNaN(parseFloat(trade.entry_price));
+                                const hasExit = trade.exit_price !== null && trade.exit_price !== undefined && !isNaN(parseFloat(trade.exit_price));
+                                const hasEntryTime = !!trade.trade_time;
+                                const hasExitTime = !!trade.exit_time;
+                                const imgUrls = trade.images ? String(trade.images).split(',').filter(Boolean) : [];
+
+                                const disabledReasons = [];
+                                if (!hasAsset) disabledReasons.push("Tài sản (Asset) đang trống");
+                                else if (!isSymbolSupported(trade.asset)) disabledReasons.push(`Cặp tiền ${trade.asset.toUpperCase()} chưa được hỗ trợ`);
+                                
+                                if (!hasEntry) disabledReasons.push("Entry đang trống");
+                                if (!hasExit) disabledReasons.push("Exit đang trống");
+                                if (!hasEntryTime) disabledReasons.push("Thời gian vào lệnh trống");
+                                if (!hasExitTime) disabledReasons.push("Thời gian ra lệnh trống");
+                                if (imgUrls.length >= 10) disabledReasons.push("Đạt giới hạn 10 ảnh");
+
+                                const isChartGenDisabled = disabledReasons.length > 0;
+
+                                return (
+                                  <div className="flex items-center gap-1">
+                                    {isChartGenDisabled && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="relative p-1 rounded-md bg-amber-500/10 text-amber-500 dark:text-amber-400 hover:bg-amber-500/20 transition-colors border border-amber-500/20 cursor-pointer group outline-none"
+                                      >
+                                        <AlertTriangle className="w-3 h-3" />
+                                        
+                                        <div className="absolute right-full top-1/2 -translate-y-1/2 mr-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus:opacity-100 group-focus:visible z-[100] w-[220px] bg-white dark:bg-slate-800 border border-amber-200 dark:border-amber-500/30 rounded-xl shadow-xl p-3 text-left transition-all pointer-events-none">
+                                          <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-1.5">{t('autoGenMissingConditions')}</p>
+                                          <ul className="text-[10px] text-slate-700 dark:text-slate-300 list-disc pl-3 space-y-1">
+                                            {disabledReasons.map((reason, idx) => (
+                                              <li key={idx}>{reason}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      disabled={isChartGenDisabled}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setTradeToGenerateImage(trade);
+                                      }}
+                                      title={t('genImageBtn')}
+                                      className="flex items-center gap-1 px-2.5 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 border border-sky-500/20 rounded-lg text-[10px] font-bold transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      <Image className="w-3 h-3 text-sky-500" /> {t('genImageBtn')}
+                                    </button>
+                                  </div>
+                                );
+                              })()}
 
                               <Link
-                                href={`/studio?tradeId=${trade.id}`}
+                                href={`/studio?tradeId=${trade.id}${activeTab && activeTab !== 'ALL' ? `&account=${activeTab}` : ''}`}
                                 onClick={(e) => e.stopPropagation()}
-                                title="Xem trên biểu đồ Studio (M5)"
+                                title={t('viewChartBtn')}
                                 className="flex items-center gap-1 px-2.5 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 rounded-lg text-[10px] font-bold transition cursor-pointer"
                               >
-                                <BarChart2 className="w-3 h-3 text-indigo-500" /> Xem Chart
+                                <BarChart2 className="w-3 h-3 text-indigo-500" /> {t('viewChartBtn')}
                               </Link>
 
                               <div className="text-right ml-1">
@@ -2188,79 +2549,46 @@ function DashboardContent() {
                   )}
 
                 </div>
+                
+                <BehaviorIntelligence
+                  trades={trades}
+                  onFilterByBehavior={(ids) => setBehaviorFilterIds(ids)}
+                />
               </div>
 
               {/* Right Column: AI Insights & Analytics */}
-              <div className="space-y-8 xl:col-span-1">
+              <div className="space-y-8 xl:col-span-1 animate-slide-down">
                 
-                {/* Analytics Hub (Widget Dock) */}
-                <div className={`p-4 rounded-3xl transition-colors duration-300 ${themeStyles.card}`}>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-sky-400" /> Bảng Phân Tích
-                    </span>
-                  </div>
+                <TradingRules 
+                  trades={trades} 
+                  activeTab={activeTab} 
+                  accountTabs={accountTabs} 
+                  onViolationChange={setRuleViolations} 
+                  onExpand={() => setExpandedWidget('trading-rules')} 
+                />
+
+                <div className="theme-card rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col">
+                  <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
                   
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { id: 'ai-insights', icon: Sparkles, label: 'AI Insights', activeColor: 'bg-emerald-500 text-slate-950', inactiveColor: 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 border-emerald-500/20' },
-                      { id: 'behavior', icon: ShieldAlert, label: 'Thói quen', activeColor: 'bg-rose-500 text-slate-950', inactiveColor: 'text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/20' },
-                      { id: 'setup-stats', icon: TrendingUp, label: 'Bảng điểm', activeColor: 'bg-sky-500 text-slate-950', inactiveColor: 'text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border-sky-500/20' },
-                      { id: 'progress-dashboard', icon: Award, label: 'Tiến bộ', activeColor: 'bg-amber-500 text-slate-950', inactiveColor: 'text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/20' },
-                      { id: 'trading-rules', icon: BookOpen, label: 'Kỷ luật', activeColor: 'bg-purple-500 text-slate-950', inactiveColor: 'text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 border-purple-500/20' },
-                      { id: 'mindset-journal', icon: Brain, label: 'Tâm lý', activeColor: 'bg-violet-500 text-slate-950', inactiveColor: 'text-violet-400 bg-violet-500/10 hover:bg-violet-500/20 border-violet-500/20' },
-                    ].map(widget => {
-                      const IconComp = widget.icon;
-                      const isActive = activeWidgets.includes(widget.id);
-                      return (
-                        <button
-                          key={widget.id}
-                          onClick={() => toggleWidget(widget.id)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer border shadow-sm ${
-                            isActive ? `${widget.activeColor} border-transparent shadow-md scale-[1.02]` : `${widget.inactiveColor} border`
-                          }`}
-                        >
-                          <IconComp className="w-3.5 h-3.5" />
-                          <span>{widget.label}</span>
-                        </button>
-                      );
-                    })}
+                  <div className="flex items-center justify-between border-b theme-border pb-4 relative z-10">
+                    <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                      <BrainCircuit className="w-5 h-5 text-emerald-400" /> {t('aiInsightsTitle')}
+                    </h3>
+                    <button onClick={() => setExpandedWidget('ai-insights')} className="p-2 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl transition">
+                      <Maximize2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 mb-2 relative z-10 flex-1">
+                    <TradingImprovementEngine trades={trades} activeTab={activeTab} />
                   </div>
                 </div>
 
-                {/* Conditional Widgets */}
-                <div className="space-y-8 animate-slide-down">
-                  {activeWidgets.includes('ai-insights') && (
-                    <AIInsights trades={trades} onExpand={() => setExpandedWidget('ai-insights')} />
-                  )}
-
-                  {activeWidgets.includes('behavior') && (
-                    <BehaviorHabitAnalysis 
-                      trades={trades} 
-                      selectedStrengthFilter={selectedStrengthFilter}
-                      setSelectedStrengthFilter={setSelectedStrengthFilter}
-                      selectedWeaknessFilter={selectedWeaknessFilter}
-                      setSelectedWeaknessFilter={setSelectedWeaknessFilter}
-                      onExpand={() => setExpandedWidget('behavior')}
-                    />
-                  )}
-
-                  {activeWidgets.includes('setup-stats') && (
-                    <SetupStats stats={stats} trades={trades} onExpand={() => setExpandedWidget('setup-stats')} />
-                  )}
-
-                  {activeWidgets.includes('progress-dashboard') && (
-                    <ProgressDashboard activeTab={activeTab} onExpand={() => setExpandedWidget('progress-dashboard')} />
-                  )}
-
-                  {activeWidgets.includes('trading-rules') && (
-                    <TradingRules trades={trades} activeTab={activeTab} accountTabs={accountTabs} onViolationChange={setRuleViolations} onExpand={() => setExpandedWidget('trading-rules')} />
-                  )}
-
-                  {activeWidgets.includes('mindset-journal') && (
-                    <MindsetJournal onExpand={() => setExpandedWidget('mindset-journal')} />
-                  )}
-                </div>
+                <SetupStats 
+                  stats={stats} 
+                  trades={trades} 
+                  onExpand={() => setExpandedWidget('setup-stats')} 
+                />
               </div>
 
             </div>
@@ -2279,6 +2607,7 @@ function DashboardContent() {
         onTradeAdded={handleTradeAdded}
         tradeToEdit={editingTrade}
         accountTabs={accountTabs}
+        activeTab={activeTab}
       />
 
 
@@ -2608,11 +2937,14 @@ function DashboardContent() {
                             setZoomImages(carouselImages);
                             setZoomImageIndex(carouselImageIndex);
                           }}
-                          className="absolute inset-0 bg-slate-950/10 hover:bg-slate-950/0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-zoom-in"
+                          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-zoom-in z-20"
                         >
-                          <span className="bg-slate-900/90 text-white text-xs px-3 py-1.5 rounded-lg border border-slate-800 font-semibold shadow-lg">
-                            Click để phóng to ảnh #{carouselImageIndex + 1}
-                          </span>
+                          <div 
+                            className="absolute top-3 right-3 p-2 rounded-lg border border-slate-700 shadow-xl" 
+                            style={{ backgroundColor: 'rgba(15,23,42,0.85)', color: '#ffffff' }}
+                          >
+                            <Maximize2 className="w-4 h-4" />
+                          </div>
                         </div>
 
                         {/* Image navigation arrows overlay */}
@@ -3032,6 +3364,115 @@ function DashboardContent() {
         </div>
       )}
 
+      {/* Monthly AI Review Modal */}
+      {isMonthlyReviewOpen && monthlyReview && (
+        <div 
+          onClick={() => setIsMonthlyReviewOpen(false)}
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-fade-in"
+        >
+          <div 
+            className="relative w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] animate-scale-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+              <div className="flex items-center gap-2">
+                <BarChart2 className="w-5 h-5 text-purple-400 animate-pulse" />
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                  Đánh giá Tháng Này
+                </h2>
+              </div>
+              <button
+                onClick={() => setIsMonthlyReviewOpen(false)}
+                className="p-1.5 hover:bg-slate-850 rounded-lg text-slate-400 hover:text-white transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-5">
+              
+              {/* Score card & Overview */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-slate-950/60 p-4 rounded-2xl border border-slate-850">
+                <div className="text-center sm:border-r border-slate-850 flex flex-col justify-center py-2">
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold">Kỷ luật tháng</span>
+                  <span className="text-3xl font-extrabold text-purple-400 font-mono mt-1">
+                    {monthlyReview.discipline_score}/10
+                  </span>
+                </div>
+                <div className="sm:col-span-2 flex flex-col justify-center pl-2">
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold mb-1">{t('coachSummary')}</span>
+                  <p className="text-xs text-slate-350 leading-relaxed italic">
+                    &ldquo;{monthlyReview.summary}&rdquo;
+                  </p>
+                </div>
+              </div>
+
+              {/* Strengths & Weaknesses Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-emerald-500/5 border border-emerald-500/10 p-4 rounded-xl space-y-2">
+                  <span className="text-emerald-450 text-[10px] font-bold uppercase tracking-wider block">
+                    {t('strengthsDecisions')}
+                  </span>
+                  <ul className="space-y-1.5 list-disc list-inside text-xs text-slate-350">
+                    {monthlyReview.strengths?.map((str, i) => (
+                      <li key={i} className="leading-relaxed">{str}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="bg-rose-500/5 border border-rose-500/10 p-4 rounded-xl space-y-2">
+                  <span className="text-rose-450 text-[10px] font-bold uppercase tracking-wider block">
+                    {t('weaknessesRepeats')}
+                  </span>
+                  <ul className="space-y-1.5 list-disc list-inside text-xs text-slate-300">
+                    {monthlyReview.weaknesses?.map((weak, i) => (
+                      <li key={i} className="leading-relaxed">{weak}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {/* Key Lessons */}
+              <div className="bg-slate-950/40 border border-slate-850 p-4 rounded-xl space-y-2">
+                <span className="text-blue-400 text-[10px] font-bold uppercase tracking-wider block">
+                  {t('coreLessons')}
+                </span>
+                <ul className="space-y-1.5 list-decimal list-inside text-xs text-slate-300">
+                  {monthlyReview.key_lessons?.map((les, i) => (
+                    <li key={i} className="leading-relaxed">{les}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Action Plan */}
+              <div className="bg-purple-500/5 border border-purple-500/10 p-4 rounded-xl space-y-2">
+                <span className="text-purple-400 text-[10px] font-bold uppercase tracking-wider block">
+                  Kế hoạch tháng tới
+                </span>
+                <ul className="space-y-1.5 list-disc list-inside text-xs text-slate-300">
+                  {monthlyReview.action_plan?.map((act, i) => (
+                    <li key={i} className="leading-relaxed">{act}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-slate-800 bg-slate-950/50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsMonthlyReviewOpen(false)}
+                className="px-5 py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                {t('understoodRules')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* What-If Simulator Modal */}
       {whatIfTrade && (
         <WhatIfSimulator trade={whatIfTrade} onClose={() => setWhatIfTrade(null)} />
@@ -3178,15 +3619,25 @@ function DashboardContent() {
               <button
                 type="button"
                 onClick={() => {
-                  exportToHTML('ALL');
+                  exportToHTML('TODAY');
                   setIsExportModalOpen(false);
                 }}
                 className="w-full text-left px-4 py-3 bg-slate-950 hover:bg-slate-850 border border-slate-850 hover:border-slate-800 rounded-xl transition text-xs font-bold text-white flex items-center justify-between cursor-pointer"
               >
-                <span>📦 Xuất toàn bộ lệnh ({trades.length})</span>
-                <span className="text-[10px] text-slate-500 font-semibold">Tất cả</span>
+                <span>☀️ Hôm nay</span>
               </button>
-              
+
+              <button
+                type="button"
+                onClick={() => {
+                  exportToHTML('YESTERDAY');
+                  setIsExportModalOpen(false);
+                }}
+                className="w-full text-left px-4 py-3 bg-slate-950 hover:bg-slate-850 border border-slate-850 hover:border-slate-800 rounded-xl transition text-xs font-bold text-white flex items-center justify-between cursor-pointer"
+              >
+                <span>🌙 Hôm qua</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -3227,6 +3678,65 @@ function DashboardContent() {
                 <span className="text-[10px] text-amber-400 font-mono">
                   {Math.min(20, trades.length)} lệnh
                 </span>
+              </button>
+
+              <div className="w-full border border-slate-850 rounded-xl overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomDate(!showCustomDate)}
+                  className="w-full text-left px-4 py-3 bg-slate-950 hover:bg-slate-850 transition text-xs font-bold text-white flex items-center justify-between cursor-pointer"
+                >
+                  <span>🗓️ Tuỳ chọn ngày (Từ ngày - Đến ngày)</span>
+                  {showCustomDate ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+                </button>
+                {showCustomDate && (
+                  <div className="p-4 bg-slate-900 border-t border-slate-850 flex flex-col gap-3">
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <label className="block text-[10px] text-slate-500 font-semibold mb-1 uppercase">Từ ngày</label>
+                        <input 
+                          type="date" 
+                          value={exportStartDate}
+                          onChange={(e) => setExportStartDate(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500/50"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-[10px] text-slate-500 font-semibold mb-1 uppercase">Đến ngày</label>
+                        <input 
+                          type="date" 
+                          value={exportEndDate}
+                          onChange={(e) => setExportEndDate(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500/50"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        exportToHTML('CUSTOM');
+                        if (exportStartDate && exportEndDate) {
+                          setIsExportModalOpen(false);
+                        }
+                      }}
+                      className="w-full mt-2 py-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg text-xs font-bold transition cursor-pointer"
+                    >
+                      Xác nhận xuất
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  exportToHTML('ALL');
+                  setIsExportModalOpen(false);
+                }}
+                className="w-full text-left px-4 py-3 bg-slate-950 hover:bg-slate-850 border border-slate-850 hover:border-slate-800 rounded-xl transition text-xs font-bold text-white flex items-center justify-between cursor-pointer mt-2"
+              >
+                <span>📦 Xuất toàn bộ lệnh ({trades.length})</span>
+                <span className="text-[10px] text-slate-500 font-semibold">Tất cả</span>
               </button>
             </div>
           </div>

@@ -119,7 +119,7 @@ export async function GET(request) {
       // Normalize and group into standardized methods: Keylevel, Breakout, LHRetest, FBO, FOMO, Trend Following, Discretionary
       const rawTag = (ai_eval && ai_eval.setup_tag && ai_eval.setup_tag !== 'Unclassified') 
         ? ai_eval.setup_tag 
-        : (trade.setup_tag || 'Unclassified');
+        : (trade.setup_tag || trade.user_notes || 'Unclassified');
       const tag = normalizeSetupTag(rawTag);
 
       if (!setupGroups[tag]) {

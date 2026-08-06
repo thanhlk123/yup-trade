@@ -11,6 +11,7 @@
     "postinstall": "patch-package"
   },
   "dependencies": {
+    "canvas-confetti": "^1.9.4",
     "html-to-image": "^1.11.13",
     "lightweight-charts": "^5.2.0",
     "lucide-react": "^1.25.0",

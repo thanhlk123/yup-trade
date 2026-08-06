@@ -16,7 +16,8 @@ import {
   Maximize2,
   Upload,
   Layers,
-  Clock
+  Clock,
+  Check
 } from 'lucide-react';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
 
@@ -88,10 +89,20 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
   const [rawParsedTrades, setRawParsedTrades] = useState([]); // Backup of raw parsed trades without DCA
   const [step, setStep] = useState('input'); // 'input' | 'preview'
   const [groupDCA, setGroupDCA] = useState(true);
-  const [runAIAnalysis, setRunAIAnalysis] = useState(true);
   const [sourceTimezoneOffset, setSourceTimezoneOffset] = useState(0);
   const [localOffsetHours, setLocalOffsetHours] = useState(7);
   const [localTzName, setLocalTzName] = useState('Asia/Ho_Chi_Minh');
+  const [globalTargetAccount, setGlobalTargetAccount] = useState('LIVE');
+  const [isGlobalAccountDropdownOpen, setIsGlobalAccountDropdownOpen] = useState(false);
+
+  useEffect(() => {
+    if (activeTab && activeTab !== 'ALL') {
+      setGlobalTargetAccount(activeTab);
+    } else if (accountTabs && accountTabs.length > 0) {
+      const validTab = accountTabs.find(t => !t.isAll);
+      if (validTab) setGlobalTargetAccount(validTab.key);
+    }
+  }, [activeTab, accountTabs]);
 
   useEffect(() => {
     try {
@@ -407,13 +418,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
       const stop_loss = getVal('stop_loss') ? parseFloat(getVal('stop_loss')) : null;
       const take_profit = getVal('take_profit') ? parseFloat(getVal('take_profit')) : null;
       const user_notes = getVal('user_notes') || '';
-      let trade_type = 'LIVE';
-      if (activeTab && activeTab !== 'ALL') {
-        trade_type = activeTab;
-      } else if (accountTabs.length > 0) {
-        const validTab = accountTabs.find(t => !t.isAll);
-        if (validTab) trade_type = validTab.key;
-      }
+      let trade_type = getVal('trade_type') || globalTargetAccount;
 
       trades.push({
         asset,
@@ -768,31 +773,10 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
     setError('');
 
     try {
-      // If runAIAnalysis is true and they haven't run AI analysis yet, let's analyze first!
-      let finalTrades = selectedTrades;
-      const unanalyzedTrades = selectedTrades.filter((t) => !t.ai_evaluation);
-      let aiFailed = false;
-      
-      if (runAIAnalysis && unanalyzedTrades.length > 0) {
-        setError('Đang phân tích AI cho các lệnh trước khi nhập...');
-        const response = await fetch('/api/trades/analyze-bulk', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ trades: selectedTrades, lang: language }),
-        });
-        const result = await response.json();
-        if (result.success && result.trades) {
-          finalTrades = result.trades;
-        } else {
-          console.warn('AI Analysis failed, proceeding with heuristics/raw data:', result.error);
-          aiFailed = true;
-        }
-      }
-
       const response = await fetch('/api/trades/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trades: finalTrades }),
+        body: JSON.stringify({ trades: selectedTrades }),
       });
 
       const result = await response.json();
@@ -806,7 +790,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
         setRawParsedTrades([]);
         setStep('input');
         
-        if (aiFailed) {
+        if (result.aiFailed) {
           alert("Import thành công! Tuy nhiên, hệ thống AI (Gemini) đang bị nghẽn mạng nên các lệnh tạm thời chỉ được lưu dưới dạng dữ liệu gốc (chưa có phân tích tự động). Bạn có thể phân tích lại sau!");
         }
       } else {
@@ -897,6 +881,67 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
               {/* Configurations */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 
+                {/* Global Account Selection Option (Only if in ALL tab) */}
+                {activeTab === 'ALL' && (
+                  <div className="theme-inner-card p-4 rounded-xl space-y-2.5 col-span-1 md:col-span-2 border theme-border">
+                    <label className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-emerald-400"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                      {t('csvSelectAccountTab') || 'Chọn Tài Khoản'}
+                    </label>
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setIsGlobalAccountDropdownOpen(!isGlobalAccountDropdownOpen)}
+                        className="w-full theme-inner-card border theme-border rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer font-semibold focus:border-emerald-500 flex items-center justify-between"
+                      >
+                        <span className="truncate">
+                          {(() => {
+                            const options = accountTabs && accountTabs.length > 0 ? accountTabs.filter(t => !t.isAll) : [
+                              { key: 'LIVE', label: 'Live' },
+                              { key: 'BACKTEST', label: 'Backtest' }
+                            ];
+                            const selected = options.find(o => o.key === globalTargetAccount);
+                            return selected ? selected.label : globalTargetAccount;
+                          })()}
+                        </span>
+                        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isGlobalAccountDropdownOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      
+                      {isGlobalAccountDropdownOpen && (
+                        <>
+                          <div 
+                            className="fixed inset-0 z-[100]" 
+                            onClick={() => setIsGlobalAccountDropdownOpen(false)}
+                          ></div>
+                          <div className="absolute top-full left-0 right-0 mt-1 z-[101] theme-inner-card border theme-border rounded-xl shadow-xl overflow-hidden animate-fade-in py-1">
+                            {(accountTabs && accountTabs.length > 0 ? accountTabs.filter(t => !t.isAll) : [
+                              { key: 'LIVE', label: 'Live Account' },
+                              { key: 'BACKTEST', label: 'Backtest' }
+                            ]).map((tab) => (
+                              <button
+                                key={tab.key}
+                                type="button"
+                                onClick={() => {
+                                  setGlobalTargetAccount(tab.key);
+                                  setIsGlobalAccountDropdownOpen(false);
+                                }}
+                                className={`w-full text-left px-3 py-2 text-xs transition-colors cursor-pointer flex items-center justify-between ${
+                                  globalTargetAccount === tab.key 
+                                    ? 'bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 font-semibold' 
+                                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                }`}
+                              >
+                                <span>{tab.label}</span>
+                                {globalTargetAccount === tab.key && <Check className="w-4 h-4" />}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+                
                 {/* Timezone Selection Option */}
                 <div className="theme-inner-card p-4 rounded-xl space-y-2.5 col-span-1 md:col-span-2 border theme-border">
                   <label className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
@@ -934,7 +979,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
                 </div>
 
                 {/* DCA Option */}
-                <div className="theme-inner-card p-4 rounded-xl flex items-start gap-3.5">
+                <div className="theme-inner-card p-4 rounded-xl flex items-start gap-3.5 col-span-1 md:col-span-2">
                   <div className="pt-0.5">
                     <input 
                       type="checkbox"
@@ -950,27 +995,6 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
                     </span>
                     <p className="text-xs text-slate-500 leading-relaxed">
                       {t('csvGroupDcaDesc')}
-                    </p>
-                  </label>
-                </div>
-
-                {/* AI Analysis Option */}
-                <div className="theme-inner-card p-4 rounded-xl flex items-start gap-3.5">
-                  <div className="pt-0.5">
-                    <input 
-                      type="checkbox"
-                      id="runAIAnalysis"
-                      checked={runAIAnalysis}
-                      onChange={() => setRunAIAnalysis(!runAIAnalysis)}
-                      className="w-4 h-4 rounded theme-border theme-card text-sky-500 focus:ring-sky-500 cursor-pointer"
-                    />
-                  </div>
-                  <label htmlFor="runAIAnalysis" className="space-y-1 cursor-pointer">
-                    <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-purple-400" /> {t('csvAiAnalysisTitle')}
-                    </span>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      {t('csvAiAnalysisDesc')}
                     </p>
                   </label>
                 </div>
@@ -1049,15 +1073,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
                     />
                     <span>{t('csvGroupDcaCheck')}</span>
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-400">
-                    <input 
-                      type="checkbox"
-                      checked={runAIAnalysis}
-                      onChange={() => setRunAIAnalysis(!runAIAnalysis)}
-                      className="w-3.5 h-3.5 rounded theme-border theme-card text-sky-500 focus:ring-sky-500 cursor-pointer"
-                    />
-                    <span>{t('csvAiAnalyzeCheck')}</span>
-                  </label>
+
                 </div>
                 
                 {/* AI Trigger button in preview */}
@@ -1113,30 +1129,30 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
                             
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-sm text-white">Lệnh #{idx + 1}</span>
+                                <span className="font-bold text-sm text-white">{t('csvOrderNum', { num: idx + 1 })}</span>
                                 <span className="text-xs text-slate-400 font-semibold">{trade.asset}</span>
                                 
                                 {trade.is_grouped && (
                                   <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center gap-1">
                                     <Layers className="w-2.5 h-2.5" />
-                                    DCA gộp ({trade.grouped_count} lệnh)
+                                    {t('csvGroupedDcaCount', { count: trade.grouped_count })}
                                   </span>
                                 )}
 
                                 {trade.is_duplicate && (
                                   <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1">
-                                    Đã có trong lịch sử (Trùng lặp)
+                                    {t('csvDuplicateEntry')}
                                   </span>
                                 )}
 
                                 {ai && (
                                   <span className="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">
-                                    AI Đánh Giá: {ai.decision_rating}/10
+                                    {t('csvAiRating', { rating: ai.decision_rating })}
                                   </span>
                                 )}
                               </div>
                               <span className="text-[10px] text-slate-500 font-medium font-mono">
-                                Vol: {trade.size} | Giá vào: {trade.entry_price} | Setup: {trade.setup_tag || 'Unclassified'}
+                                  {t('csvTradeDetails', { vol: trade.size, entry: trade.entry_price, setup: trade.setup_tag || t('csvUnclassified') })}
                               </span>
                             </div>
                           </div>
@@ -1192,23 +1208,25 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
                                   <option value="SELL">SELL</option>
                                 </select>
                               </div>
-                              <div>
-                                <label className="block text-[10px] text-slate-500 uppercase font-semibold mb-1">{t('csvSelectAccountTab')}</label>
-                                <select
-                                  value={trade.trade_type || 'LIVE'}
-                                  onChange={(e) => handleFieldChange(idx, 'trade_type', e.target.value)}
-                                  className="w-full theme-inner-card border theme-border focus:border-sky-500 rounded-lg px-2 py-1.5 text-white outline-none"
-                                >
-                                  {accountTabs.length > 0 ? accountTabs.filter(t => !t.isAll).map(tab => (
-                                    <option key={tab.key} value={tab.key}>{tab.label}</option>
-                                  )) : (
-                                    <>
-                                      <option value="LIVE">Live Account</option>
-                                      <option value="BACKTEST">Backtest</option>
-                                    </>
-                                  )}
-                                </select>
-                              </div>
+                              {activeTab === 'ALL' && (
+                                <div>
+                                  <label className="block text-[10px] text-slate-500 uppercase font-semibold mb-1">{t('csvSelectAccountTab')}</label>
+                                  <select
+                                    value={trade.trade_type || 'LIVE'}
+                                    onChange={(e) => handleFieldChange(idx, 'trade_type', e.target.value)}
+                                    className="w-full theme-inner-card border theme-border focus:border-sky-500 rounded-lg px-2 py-1.5 text-white outline-none"
+                                  >
+                                    {accountTabs.length > 0 ? accountTabs.filter(t => !t.isAll).map(tab => (
+                                      <option key={tab.key} value={tab.key}>{tab.label}</option>
+                                    )) : (
+                                      <>
+                                        <option value="LIVE">Live Account</option>
+                                        <option value="BACKTEST">Backtest</option>
+                                      </>
+                                    )}
+                                  </select>
+                                </div>
+                              )}
                               <div>
                                 <label className="block text-[10px] text-slate-500 uppercase font-semibold mb-1">Volume (Size)</label>
                                 <input
@@ -1442,7 +1460,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
                 value={tempNotesText}
                 onChange={(e) => setTempNotesText(e.target.value)}
                 autoFocus
-                placeholder="Chi tiết ghi chú..."
+                placeholder={t('csvNotesDetailPlaceholder')}
                 className="w-full flex-1 theme-inner-card border theme-border focus:border-sky-500 focus:ring-1 focus:ring-sky-500 rounded-xl p-4 text-white placeholder-slate-650 transition outline-none resize-none text-sm leading-relaxed font-mono min-h-[300px]"
               ></textarea>
             </div>
@@ -1452,7 +1470,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
                 onClick={() => setActiveNotesEditIdx(null)}
                 className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
               >
-                Hủy bỏ
+                {t('cancel')}
               </button>
               <button
                 onClick={() => {
@@ -1461,7 +1479,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
                 }}
                 className="px-5 py-2 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-sm rounded-xl shadow-lg transition cursor-pointer"
               >
-                Lưu
+                {t('save')}
               </button>
             </div>
 

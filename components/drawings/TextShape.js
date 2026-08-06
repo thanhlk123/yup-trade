@@ -207,6 +207,7 @@ export default function TextShape({
       {isEditing && (
         <foreignObject x={boxX} y={boxY} width={boxWidth} height={boxHeight}>
           <textarea
+            className="custom-input focus:ring-0"
             ref={inputRef}
             value={textValue}
             onChange={(e) => setTextValue(e.target.value)}

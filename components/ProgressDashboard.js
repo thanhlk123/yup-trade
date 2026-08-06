@@ -26,11 +26,11 @@ export default function ProgressDashboard({ activeTab, isExpanded, onExpand }) {
   }, [activeTab, timeRange, dataFilter, language]);
 
   const gradeColors = {
-    S: 'from-amber-400 to-yellow-500 text-amber-950 border-amber-300',
-    A: 'from-emerald-400 to-teal-500 text-emerald-950 border-emerald-300',
-    B: 'from-sky-400 to-blue-500 text-sky-950 border-sky-300',
-    C: 'from-orange-400 to-amber-500 text-orange-950 border-orange-300',
-    D: 'from-rose-500 to-pink-600 text-white border-rose-300',
+    S: 'from-amber-500/20 to-yellow-500/20 text-amber-400 border-amber-500/30',
+    A: 'from-emerald-500/20 to-teal-500/20 text-emerald-400 border-emerald-500/30',
+    B: 'from-sky-500/20 to-blue-500/20 text-sky-400 border-sky-500/30',
+    C: 'from-orange-500/20 to-amber-500/20 text-orange-400 border-orange-500/30',
+    D: 'from-rose-500/20 to-pink-500/20 text-rose-400 border-rose-500/30',
   };
 
   const getPeriodLabel = () => {
@@ -47,9 +47,9 @@ export default function ProgressDashboard({ activeTab, isExpanded, onExpand }) {
       <div className="absolute -top-16 -right-16 w-48 h-48 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
       {/* Header & Controls */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b theme-border relative z-10">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 pb-3 border-b theme-border relative z-10">
         <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-          <Trophy className="w-4 h-4 text-amber-400" /> 🏆 {t('progressTitle')}
+          <Trophy className="w-4 h-4 text-amber-400" /> {t('progressTitle')}
         </h3>
 
         {/* Filters bar */}
@@ -126,18 +126,20 @@ export default function ProgressDashboard({ activeTab, isExpanded, onExpand }) {
 
           {/* 1. Consistency Scorecard Gauge */}
           <div className="theme-inner-card border theme-border rounded-2xl p-5 space-y-4 relative overflow-hidden shadow-sm">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="space-y-1">
                 <p className="text-xs theme-text-sub uppercase font-extrabold tracking-wider flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-emerald-400" /> {t('consistencyGaugeTitle')}
                 </p>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl sm:text-4xl font-extrabold theme-text-main leading-none">{data.consistency.score}</span>
-                  <span className="text-xs theme-text-sub font-semibold">/ 100 {t('ptsUnit')}</span>
+                <div className="flex items-center gap-3 pt-1">
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="text-4xl font-extrabold theme-text-main leading-none">{data.consistency.score}</span>
+                    <span className="text-xs theme-text-sub font-semibold">/ 100</span>
+                  </div>
+                  <div className={`px-2.5 py-0.5 rounded-lg border bg-gradient-to-r ${gradeColors[data.consistency.grade] || gradeColors.C} flex items-center justify-center font-bold text-xs uppercase shadow-sm`}>
+                    Hạng {data.consistency.grade}
+                  </div>
                 </div>
-              </div>
-              <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${gradeColors[data.consistency.grade] || gradeColors.C} flex items-center justify-center font-black text-2xl shadow-lg border`}>
-                {data.consistency.grade}
               </div>
             </div>
 
@@ -210,8 +212,8 @@ export default function ProgressDashboard({ activeTab, isExpanded, onExpand }) {
           {/* 3. Improvements vs Regressions Analysis Cards */}
           {data.comparison && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* 🟢 Improvements */}
-              <div className="theme-inner-card border border-emerald-500/30 rounded-2xl p-4 space-y-2 shadow-sm">
+              {/* 🟢 Improvements (Week vs Week Comparison) */}
+              <div className="theme-inner-card border border-emerald-500/30 rounded-2xl p-4 space-y-2 shadow-sm col-span-1 md:col-span-2">
                 <p className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" /> 🟢 {t('improvements')}
                 </p>
@@ -224,40 +226,9 @@ export default function ProgressDashboard({ activeTab, isExpanded, onExpand }) {
                   ))}
                 </ul>
               </div>
-
-              {/* 🔴 Regressions */}
-              <div className="theme-inner-card border border-rose-500/30 rounded-2xl p-4 space-y-2 shadow-sm">
-                <p className="text-xs font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" /> 🔴 {t('regressions')}
-                </p>
-                <ul className="space-y-1.5">
-                  {data.comparison.regressions.map((item, idx) => (
-                    <li key={idx} className="text-xs theme-text-main flex items-start gap-2 leading-relaxed">
-                      <span className="text-rose-500 font-bold mt-0.5">•</span>
-                      <span>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
             </div>
           )}
 
-          {/* 4. Next Best Action (AI Coach Recommendation) */}
-          {data.nextBestAction && (
-            <div className="rounded-2xl border border-violet-500/30 bg-violet-500/10 p-4 flex items-start gap-3 shadow-md">
-              <div className="p-2 rounded-xl bg-violet-500/20 text-violet-400 shrink-0 mt-0.5">
-                <Lightbulb className="w-5 h-5 animate-pulse text-amber-300" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-violet-300 uppercase tracking-wider flex items-center gap-1">
-                  {t('aiAdviceTitle')}
-                </p>
-                <p className="text-xs theme-text-main font-medium leading-relaxed">
-                  {data.nextBestAction}
-                </p>
-              </div>
-            </div>
-          )}
         </div>
       )}
 

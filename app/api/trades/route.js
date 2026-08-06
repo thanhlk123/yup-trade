@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import fs from 'fs';
+import path from 'path';
 import { getDb } from '@/lib/db';
 import { analyzeTradeWithAI } from '@/lib/ai-agent';
 import { getTradeTypeFilter } from '@/lib/tradeUtils';
@@ -150,6 +152,21 @@ export async function DELETE(request) {
       return NextResponse.json({ success: true, message: `Deleted trade ID ${id}` });
     } else {
       await db.run('DELETE FROM trades');
+      
+      // Clear all images in public/uploads/charts when resetting history
+      try {
+        const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'charts');
+        if (fs.existsSync(uploadDir)) {
+          const files = fs.readdirSync(uploadDir);
+          for (const file of files) {
+            fs.unlinkSync(path.join(uploadDir, file));
+          }
+        }
+      } catch (fsError) {
+        console.error('Error clearing upload directory:', fsError);
+        // Continue even if image deletion fails
+      }
+      
       return NextResponse.json({ success: true, message: 'All trades deleted' });
     }
   } catch (error) {

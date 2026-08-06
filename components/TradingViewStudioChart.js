@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { createChart, CandlestickSeries, LineSeries, HistogramSeries } from 'lightweight-charts';
+import { createChart, CandlestickSeries, LineSeries, HistogramSeries, createSeriesMarkers } from 'lightweight-charts';
 import HiddenChartGenerator from './HiddenChartGenerator';
 import DrawingOverlay from './drawings/DrawingOverlay';
 import DrawingToolbar from './drawings/DrawingToolbar';
@@ -25,7 +25,10 @@ import {
   Image as ImageIcon,
   Globe,
   Save,
-  Settings
+  Settings,
+  ChevronDown,
+  Check,
+  Search
 } from 'lucide-react';
 import { toJpeg } from 'html-to-image';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
@@ -38,7 +41,9 @@ import {
   calculateMACD,
   calculateBollingerBands,
   calculateStochastic,
-  calculateATR
+  calculateATR,
+  calculatePSAR,
+  calculateSMMA
 } from '@/lib/utils/technicalIndicators';
 
 export default function TradingViewStudioChart({ selectedTrades = [], onClearAllTrades, theme = 'dark' }) {
@@ -49,22 +54,25 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
   const chartRef = useRef(null);
   const candlestickSeriesRef = useRef(null);
   const animFrameIdRef = useRef(null);
-  const rawCandlesDataRef = useRef([]); // Stores untouched data for offset calculations
   const candlesDataRef = useRef([]);
   const fetchCounterRef = useRef(0);
   const hasTradePendingRef = useRef(false); // true when user has selected a trade that is being loaded
   const ignoreLogicalRangeEventsRef = useRef(false); // Prevents setData from triggering older data fetch
-
+  const loadedIntervalRef = useRef('5'); // Tracks which interval the data in candlesDataRef belongs to
 
   const selectedTradesRef = useRef(selectedTrades);
   useEffect(() => {
     selectedTradesRef.current = selectedTrades;
   }, [selectedTrades]);
 
+  const legendValueRefs = useRef({});
+
   // ── Supported forex/metals symbols ─────────────────────────────────────────
   const SUPPORTED_SYMBOLS = [
+    // Metals
     { value: 'XAUUSD', label: 'XAUUSD', group: '🥇 ' + t('metals') },
     { value: 'XAGUSD', label: 'XAGUSD', group: '🥇 ' + t('metals') },
+    // Forex Majors
     { value: 'EURUSD', label: 'EUR/USD', group: '💱 ' + t('forexMajors') },
     { value: 'GBPUSD', label: 'GBP/USD', group: '💱 ' + t('forexMajors') },
     { value: 'USDJPY', label: 'USD/JPY', group: '💱 ' + t('forexMajors') },
@@ -73,21 +81,58 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
     { value: 'USDCAD', label: 'USD/CAD', group: '💱 ' + t('forexMajors') },
     { value: 'USDCHF', label: 'USD/CHF', group: '💱 ' + t('forexMajors') },
     { value: 'NZDUSD', label: 'NZD/USD', group: '💱 ' + t('forexMajors') },
+    // Forex Minors/Crosses
     { value: 'EURGBP', label: 'EUR/GBP', group: '💱 ' + t('forexCrosses') },
     { value: 'EURJPY', label: 'EUR/JPY', group: '💱 ' + t('forexCrosses') },
+    { value: 'EURCHF', label: 'EUR/CHF', group: '💱 ' + t('forexCrosses') },
+    { value: 'EURAUD', label: 'EUR/AUD', group: '💱 ' + t('forexCrosses') },
+    { value: 'EURNZD', label: 'EUR/NZD', group: '💱 ' + t('forexCrosses') },
+    { value: 'EURCAD', label: 'EUR/CAD', group: '💱 ' + t('forexCrosses') },
+    { value: 'GBPCHF', label: 'GBP/CHF', group: '💱 ' + t('forexCrosses') },
+    { value: 'GBPAUD', label: 'GBP/AUD', group: '💱 ' + t('forexCrosses') },
+    { value: 'GBPNZD', label: 'GBP/NZD', group: '💱 ' + t('forexCrosses') },
+    { value: 'GBPCAD', label: 'GBP/CAD', group: '💱 ' + t('forexCrosses') },
+    { value: 'AUDJPY', label: 'AUD/JPY', group: '💱 ' + t('forexCrosses') },
+    { value: 'AUDCHF', label: 'AUD/CHF', group: '💱 ' + t('forexCrosses') },
+    { value: 'AUDCAD', label: 'AUD/CAD', group: '💱 ' + t('forexCrosses') },
+    { value: 'AUDNZD', label: 'AUD/NZD', group: '💱 ' + t('forexCrosses') },
+    { value: 'NZDJPY', label: 'NZD/JPY', group: '💱 ' + t('forexCrosses') },
+    { value: 'NZDCHF', label: 'NZD/CHF', group: '💱 ' + t('forexCrosses') },
+    { value: 'NZDCAD', label: 'NZD/CAD', group: '💱 ' + t('forexCrosses') },
+    { value: 'CADJPY', label: 'CAD/JPY', group: '💱 ' + t('forexCrosses') },
+    { value: 'CADCHF', label: 'CAD/CHF', group: '💱 ' + t('forexCrosses') },
+    { value: 'CHFJPY', label: 'CHF/JPY', group: '💱 ' + t('forexCrosses') },
+    // Indices
+    { value: 'US30', label: 'US30', group: '📊 Indices' },
+    { value: 'NAS100', label: 'NAS100', group: '📊 Indices' },
+    { value: 'SPX500', label: 'SPX500', group: '📊 Indices' },
+    { value: 'GER40', label: 'GER40', group: '📊 Indices' },
+    { value: 'UK100', label: 'UK100', group: '📊 Indices' },
+    { value: 'JPN225', label: 'JPN225', group: '📊 Indices' },
+    { value: 'AUS200', label: 'AUS200', group: '📊 Indices' },
+    // Commodities
+    { value: 'USOIL', label: 'USOIL', group: '🛢️ Commodities' },
+    { value: 'UKOIL', label: 'UKOIL', group: '🛢️ Commodities' },
+    // Crypto
+    { value: 'BTCUSD', label: 'BTC/USD', group: '₿ Crypto' },
+    { value: 'ETHUSD', label: 'ETH/USD', group: '₿ Crypto' },
+    // Stocks
+    { value: 'AAPL', label: 'AAPL', group: '🏢 Stocks' },
+    { value: 'TSLA', label: 'TSLA', group: '🏢 Stocks' },
+    { value: 'AMZN', label: 'AMZN', group: '🏢 Stocks' },
+    { value: 'NVDA', label: 'NVDA', group: '🏢 Stocks' },
+    { value: 'MSFT', label: 'MSFT', group: '🏢 Stocks' },
+    { value: 'META', label: 'META', group: '🏢 Stocks' },
+    { value: 'GOOGL', label: 'GOOGL', group: '🏢 Stocks' },
   ];
 
   const [tradeToAutoCapture, setTradeToAutoCapture] = useState(null);
   const isFetchingMoreRef = useRef(false);
 
   const [activeSymbol, setActiveSymbol] = useState('XAUUSD');
-  const [manualOffset, setManualOffset] = useState(''); // User-defined price shift (e.g. -0.00015 for Oanda sync)
-  
-  // Load saved offset when symbol changes
-  useEffect(() => {
-    const savedOffset = localStorage.getItem(`chart_offset_${activeSymbol}`);
-    setManualOffset(savedOffset !== null ? savedOffset : '');
-  }, [activeSymbol]);
+  const [currentProvider, setCurrentProvider] = useState('');
+  const [isSymbolDropdownOpen, setIsSymbolDropdownOpen] = useState(false);
+  const [symbolSearch, setSymbolSearch] = useState('');
 
   const [interval, setIntervalState] = useState('5'); // Default 5m review timeframe
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -102,6 +147,11 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
   const [isIndicatorsMenuOpen, setIsIndicatorsMenuOpen] = useState(false);
   const indicatorSeriesRefs = useRef({}); // Store LineSeries instances
   const [candlesUpdated, setCandlesUpdated] = useState(0);
+
+  const activeIndicatorsRef = useRef(activeIndicators);
+  useEffect(() => {
+    activeIndicatorsRef.current = activeIndicators;
+  }, [activeIndicators]);
 
   // Sync indicators with chart
   useEffect(() => {
@@ -240,6 +290,36 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
             });
           } catch (e) {}
           indicatorSeriesRefs.current[ind.id] = series;
+        } else if (ind.type === 'TMA') {
+          const line21 = typeof chartRef.current.addLineSeries === 'function'
+            ? chartRef.current.addLineSeries({ color: 'white', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false })
+            : chartRef.current.addSeries(LineSeries, { color: 'white', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false });
+          const line50 = typeof chartRef.current.addLineSeries === 'function'
+            ? chartRef.current.addLineSeries({ color: '#6aff00', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false })
+            : chartRef.current.addSeries(LineSeries, { color: '#6aff00', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false });
+          const line100 = typeof chartRef.current.addLineSeries === 'function'
+            ? chartRef.current.addLineSeries({ color: 'yellow', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false })
+            : chartRef.current.addSeries(LineSeries, { color: 'yellow', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false });
+          const line200 = typeof chartRef.current.addLineSeries === 'function'
+            ? chartRef.current.addLineSeries({ color: '#ff0500', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false })
+            : chartRef.current.addSeries(LineSeries, { color: '#ff0500', lineWidth: 2, crosshairMarkerVisible: false, lastValueVisible: false, priceLineVisible: false });
+          
+          series = { line21, line50, line100, line200 };
+          indicatorSeriesRefs.current[ind.id] = series;
+        } else if (ind.type === 'PSAR') {
+          const options = {
+            color: 'transparent',
+            lineWidth: 1,
+            crosshairMarkerVisible: false,
+            lastValueVisible: false,
+            priceLineVisible: false,
+          };
+          const psarSeries = typeof chartRef.current.addLineSeries === 'function'
+            ? chartRef.current.addLineSeries(options)
+            : chartRef.current.addSeries(LineSeries, options);
+          const psarMarkers = typeof createSeriesMarkers === 'function' ? createSeriesMarkers(psarSeries) : null;
+          series = { psarSeries, psarMarkers };
+          indicatorSeriesRefs.current[ind.id] = series;
         } else {
           const options = {
             color: ind.color,
@@ -254,7 +334,7 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
           indicatorSeriesRefs.current[ind.id] = series;
         }
       } else {
-        if (ind.type !== 'Volume' && ind.type !== 'MACD' && ind.type !== 'BB') {
+        if (ind.type !== 'Volume' && ind.type !== 'MACD' && ind.type !== 'BB' && ind.type !== 'Stoch' && ind.type !== 'PSAR' && ind.type !== 'TMA') {
           series.applyOptions({ color: ind.color });
         }
       }
@@ -273,12 +353,12 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
           const rsiData = calculateRSI(candlesDataRef.current, ind.length);
           series.setData(rsiData);
         } else if (ind.type === 'MACD') {
-          const macdData = calculateMACD(candlesDataRef.current);
+          const macdData = calculateMACD(candlesDataRef.current, ind.fast || 12, ind.slow || 26, ind.signal || 9);
           series.macdLine.setData(macdData.macd);
           series.signalLine.setData(macdData.signal);
           series.hist.setData(macdData.hist);
         } else if (ind.type === 'BB') {
-          const bbData = calculateBollingerBands(candlesDataRef.current);
+          const bbData = calculateBollingerBands(candlesDataRef.current, ind.length, ind.mult !== undefined ? ind.mult : 2);
           series.middleLine.setData(bbData.middle);
           series.upperLine.setData(bbData.upper);
           series.lowerLine.setData(bbData.lower);
@@ -286,9 +366,37 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
           const stochData = calculateStochastic(candlesDataRef.current, ind.length, 1, 3);
           series.kLine.setData(stochData.kLine);
           series.dLine.setData(stochData.dLine);
+        } else if (ind.type === 'TMA') {
+          const smma21 = calculateSMMA(candlesDataRef.current, 21);
+          const smma50 = calculateSMMA(candlesDataRef.current, 50);
+          const smma100 = calculateSMMA(candlesDataRef.current, 100);
+          const smma200 = calculateSMMA(candlesDataRef.current, 200);
+          series.line21.setData(smma21);
+          series.line50.setData(smma50);
+          series.line100.setData(smma100);
+          series.line200.setData(smma200);
         } else if (ind.type === 'ATR') {
           const atrData = calculateATR(candlesDataRef.current, ind.length);
           series.setData(atrData);
+        } else if (ind.type === 'PSAR') {
+          const psarData = calculatePSAR(candlesDataRef.current, ind.step !== undefined ? ind.step : 0.02, ind.maxStep !== undefined ? ind.maxStep : 0.2);
+          
+          const psarSeries = series.psarSeries || series;
+          psarSeries.setData(psarData);
+          
+          const markers = psarData.map(d => ({
+            time: d.time,
+            position: 'inBar',
+            color: ind.color,
+            shape: 'circle',
+            size: 0.1,
+          }));
+          
+          if (series.psarMarkers) {
+            series.psarMarkers.setMarkers(markers);
+          } else if (typeof psarSeries.setMarkers === 'function') {
+            psarSeries.setMarkers(markers);
+          }
         }
       }
     });
@@ -326,9 +434,9 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
 
   const [indicatorConfig, setIndicatorConfig] = useState(null);
 
-  const addIndicator = (type, length, color) => {
+  const addIndicator = (type, length, color, extra = {}) => {
     const id = `${type.toLowerCase()}_${length}_${Date.now()}`;
-    setActiveIndicators(prev => [...prev, { id, type, length, color, visible: true }]);
+    setActiveIndicators(prev => [...prev, { id, type, length, color, visible: true, ...extra }]);
     setIsIndicatorsMenuOpen(false);
   };
   
@@ -421,34 +529,6 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
       setIsSavingAnalysis(false);
     }
   };
-  // --- HELPER: Apply Manual Offset ---
-  const getOffsetValue = useCallback(() => {
-    const val = parseFloat(manualOffset);
-    return isNaN(val) ? 0 : val;
-  }, [manualOffset]);
-
-  const applyOffset = useCallback((candles) => {
-    const off = getOffsetValue();
-    if (off === 0) return candles;
-    
-    // Determine precision to prevent floating point math quirks like 1.0950000000000002
-    const precisionMap = {
-      'XAGUSD': 4, 'EURUSD': 5, 'GBPUSD': 5, 'USDJPY': 3, 'GBPJPY': 3,
-      'AUDUSD': 5, 'USDCAD': 5, 'USDCHF': 5, 'NZDUSD': 5, 'EURGBP': 5, 'EURJPY': 3,
-    };
-    const precision = precisionMap[activeSymbol] || 2;
-
-    return candles.map(c => ({
-      ...c,
-      open: parseFloat((c.open + off).toFixed(precision)),
-      high: parseFloat((c.high + off).toFixed(precision)),
-      low: parseFloat((c.low + off).toFixed(precision)),
-      close: parseFloat((c.close + off).toFixed(precision))
-    }));
-  }, [activeSymbol, getOffsetValue]);
-
-
-
   // Parse DB trade timestamp (UTC Database Time) to Unix seconds matching chart candle timestamps
   const parseDbUtcToTimestamp = useCallback((dateStr) => {
     if (!dateStr) return Math.floor(Date.now() / 1000);
@@ -482,7 +562,8 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
       const intervalMap = { '1': '1m', '5': '5m', '15': '15m', '60': '1h', '240': '4h', 'D': '1d' };
       const apiInterval = intervalMap[tf] || '5m';
 
-      let url = `/api/klines?symbol=${symbol}&interval=${apiInterval}&limit=1000`;
+      const encodedSymbol = encodeURIComponent(symbol);
+      let url = `/api/klines?symbol=${encodedSymbol}&interval=${apiInterval}&limit=1000`;
 
       if (targetStartTs) {
         const intervalSecMap = { '1': 60, '5': 300, '15': 900, '60': 3600, '240': 14400, 'D': 86400 };
@@ -499,6 +580,7 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
       const json = await res.json();
 
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
+        if (json.provider) setCurrentProvider(json.provider);
         return json.data;
       }
     } catch (e) {
@@ -926,12 +1008,13 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
       const intervalMap = { '1': '1m', '5': '5m', '15': '15m', '60': '1h', '240': '4h', 'D': '1d' };
       const apiInterval = intervalMap[interval] || '5m';
 
-      const url = `/api/klines?symbol=${activeSymbol}&interval=${apiInterval}&limit=1000&startTime=${Math.floor(startMs)}&endTime=${Math.floor(endMs)}`;
+      const encodedSymbol = encodeURIComponent(activeSymbol);
+      const url = `/api/klines?symbol=${encodedSymbol}&interval=${apiInterval}&limit=1000&startTime=${Math.floor(startMs)}&endTime=${Math.floor(endMs)}`;
       const res = await fetch(url);
       const json = await res.json();
 
       if (json.success && Array.isArray(json.data) && json.data.length > 0) {
-        const currentRaw = rawCandlesDataRef.current;
+        const currentRaw = candlesDataRef.current;
         const newRaw = json.data;
 
         // Deduplicate and merge
@@ -944,13 +1027,10 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
         }
         mergedRaw.sort((a, b) => a.time - b.time);
 
-        rawCandlesDataRef.current = mergedRaw;
-        
-        const offsettedMerged = applyOffset(mergedRaw);
-        candlesDataRef.current = offsettedMerged;
+        candlesDataRef.current = mergedRaw;
 
         if (candlestickSeriesRef.current) {
-          candlestickSeriesRef.current.setData(offsettedMerged);
+          candlestickSeriesRef.current.setData(mergedRaw);
           setCandlesUpdated(prev => prev + 1);
 
           const firstDate = new Date(mergedRaw[0].time * 1000).toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
@@ -970,19 +1050,9 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
       isFetchingMoreRef.current = false;
       setIsFetchingOlder(false);
     }
-  }, [interval, activeSymbol, redrawCanvasOverlay, applyOffset]);
+  }, [interval, activeSymbol, redrawCanvasOverlay]);
 
-  // Re-apply offset if user changes manualOffset without refetching
-  useEffect(() => {
-    if (rawCandlesDataRef.current && rawCandlesDataRef.current.length > 0) {
-      const offsetted = applyOffset(rawCandlesDataRef.current);
-      candlesDataRef.current = offsetted;
-      if (candlestickSeriesRef.current) {
-        candlestickSeriesRef.current.setData(offsetted);
-        redrawCanvasOverlay();
-      }
-    }
-  }, [manualOffset, applyOffset, redrawCanvasOverlay]);
+
 
   // Dynamic Theme & Color Mode Update without destroying chart instance
   useEffect(() => {
@@ -1179,10 +1249,9 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
       }
       
       if (realCandles && realCandles.length > 0) {
-        rawCandlesDataRef.current = realCandles;
-        const offsetted = applyOffset(realCandles);
-        candlesDataRef.current = offsetted;
-        candlestickSeries.setData(offsetted);
+        candlesDataRef.current = realCandles;
+        loadedIntervalRef.current = interval;
+        candlestickSeries.setData(realCandles);
         
         // Default auto view: show the last 140 candles (~9px per candle) matching TradingView native auto mode
         if (realCandles.length > 0) {
@@ -1225,7 +1294,59 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
     // Subscribe to ALL pan, zoom, scroll & crosshair events
     chart.timeScale().subscribeVisibleTimeRangeChange(redrawCanvasOverlay);
     chart.timeScale().subscribeVisibleLogicalRangeChange(handleLogicalRangeChange);
-    chart.subscribeCrosshairMove(redrawCanvasOverlay);
+
+    const handleCrosshairMove = (param) => {
+      redrawCanvasOverlay();
+      
+      if (!activeIndicatorsRef.current) return;
+      activeIndicatorsRef.current.forEach(ind => {
+        const span = legendValueRefs.current[ind.id];
+        if (!span) return;
+        
+        if (!param.time || param.point.x < 0 || param.point.y < 0) {
+          span.innerHTML = '';
+          return;
+        }
+        
+        const seriesObj = indicatorSeriesRefs.current[ind.id];
+        if (!seriesObj) return;
+        
+        try {
+          if (ind.type === 'MACD') {
+            const macd = param.seriesData.get(seriesObj.macdLine);
+            const sig = param.seriesData.get(seriesObj.signalLine);
+            const hist = param.seriesData.get(seriesObj.hist);
+            if (macd !== undefined && sig !== undefined && hist !== undefined) {
+               span.innerHTML = `<span style="color:#2962FF">${macd.value.toFixed(2)}</span> <span style="color:#FF6D00">${sig.value.toFixed(2)}</span> <span style="color:${hist.color || '#26A69A'}">${hist.value.toFixed(2)}</span>`;
+            } else span.innerHTML = '';
+          } else if (ind.type === 'Stoch') {
+            const k = param.seriesData.get(seriesObj.kLine);
+            const d = param.seriesData.get(seriesObj.dLine);
+            if (k !== undefined && d !== undefined) {
+               span.innerHTML = `<span style="color:#2962FF">${k.value.toFixed(2)}</span> <span style="color:#FF6D00">${d.value.toFixed(2)}</span>`;
+            } else span.innerHTML = '';
+          } else if (ind.type === 'BB') {
+             const m = param.seriesData.get(seriesObj.middleLine);
+             const u = param.seriesData.get(seriesObj.upperLine);
+             const l = param.seriesData.get(seriesObj.lowerLine);
+             if (m !== undefined && u !== undefined && l !== undefined) {
+                span.innerHTML = `<span style="color:#FF9800">${m.value.toFixed(2)}</span> <span style="color:#2196F3">${u.value.toFixed(2)}</span> <span style="color:#2196F3">${l.value.toFixed(2)}</span>`;
+             } else span.innerHTML = '';
+          } else if (ind.type === 'PSAR') {
+             const s = seriesObj.psarSeries || seriesObj;
+             const v = param.seriesData.get(s);
+             if (v !== undefined) span.textContent = v.value.toFixed(4);
+             else span.textContent = '';
+          } else {
+             const v = param.seriesData.get(seriesObj);
+             if (v !== undefined) span.textContent = v.value.toFixed(2);
+             else span.textContent = '';
+          }
+        } catch (e) {}
+      });
+    };
+
+    chart.subscribeCrosshairMove(handleCrosshairMove);
 
     const handleResize = () => {
       if (chartContainerRef.current && chartRef.current) {
@@ -1255,7 +1376,7 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
         try {
           chartInstance.timeScale().unsubscribeVisibleTimeRangeChange(redrawCanvasOverlay);
           chartInstance.timeScale().unsubscribeVisibleLogicalRangeChange(handleLogicalRangeChange);
-          chartInstance.unsubscribeCrosshairMove(redrawCanvasOverlay);
+          chartInstance.unsubscribeCrosshairMove(handleCrosshairMove);
         } catch (e) {
           // Safe disposal check
         }
@@ -1273,7 +1394,7 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
         chartContainerRef.current.innerHTML = '';
       }
     };
-  }, [interval, activeSymbol, candleColorMode, fetchHistoricalXauusdCandles, redrawCanvasOverlay, handleLoadOlderCandles, applyOffset]);
+  }, [interval, activeSymbol, candleColorMode, fetchHistoricalXauusdCandles, redrawCanvasOverlay, handleLoadOlderCandles]);
 
   // Load Historical Candles & Lockstep Center View when selectedTrades changes
   useEffect(() => {
@@ -1346,7 +1467,7 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
     };
 
     const sameSymbol = activeSymbol === (selectedTrades[0].asset || 'XAUUSD');
-    const alreadyCovered = coversStart && coversEnd;
+    const alreadyCovered = coversStart && coversEnd && loadedIntervalRef.current === interval;
 
     if (alreadyCovered) {
       // Data already loaded and covers the trade range — just scroll, no fetch needed
@@ -1363,12 +1484,11 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
         hasTradePendingRef.current = false;
 
         if (historicalCandles && historicalCandles.length > 0 && candlestickSeriesRef.current) {
-          const offsetted = applyOffset(historicalCandles);
-          candlesDataRef.current = offsetted;
-          rawCandlesDataRef.current = historicalCandles;
+          candlesDataRef.current = historicalCandles;
+          loadedIntervalRef.current = interval;
 
           ignoreLogicalRangeEventsRef.current = true;
-          candlestickSeriesRef.current.setData(offsetted);
+          candlestickSeriesRef.current.setData(historicalCandles);
           setCandlesUpdated(prev => prev + 1);
           applyViewport();
           setTimeout(() => { ignoreLogicalRangeEventsRef.current = false; }, 200);
@@ -1389,12 +1509,11 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
         hasTradePendingRef.current = false;
 
         if (historicalCandles && historicalCandles.length > 0 && candlestickSeriesRef.current) {
-          const offsetted = applyOffset(historicalCandles);
-          candlesDataRef.current = offsetted;
-          rawCandlesDataRef.current = historicalCandles;
+          candlesDataRef.current = historicalCandles;
+          loadedIntervalRef.current = interval;
 
           ignoreLogicalRangeEventsRef.current = true;
-          candlestickSeriesRef.current.setData(offsetted);
+          candlestickSeriesRef.current.setData(historicalCandles);
           setCandlesUpdated(prev => prev + 1);
           applyViewport();
           setTimeout(() => { ignoreLogicalRangeEventsRef.current = false; }, 200);
@@ -1483,39 +1602,85 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
 
           {/* ── Symbol Selector Dropdown ── */}
           <div className="relative">
-            <select
-              value={activeSymbol}
-              onChange={(e) => setActiveSymbol(e.target.value)}
-              className={`appearance-none pl-2.5 pr-7 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition focus:outline-none focus:ring-1 ${
+            <button
+              onClick={() => setIsSymbolDropdownOpen(!isSymbolDropdownOpen)}
+              className={`flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition focus:outline-none focus:ring-1 ${
                 theme === 'light'
                   ? 'bg-white border-slate-300 text-slate-800 hover:border-slate-400 focus:ring-emerald-400'
                   : 'bg-slate-800 border-slate-600 text-white hover:border-slate-500 focus:ring-emerald-500'
               }`}
               title={t('selectAsset')}
             >
-              {(() => {
-                const groups = {};
-                SUPPORTED_SYMBOLS.forEach(s => {
-                  if (!groups[s.group]) groups[s.group] = [];
-                  groups[s.group].push(s);
-                });
-                return Object.entries(groups).map(([groupName, symbols]) => (
-                  <optgroup key={groupName} label={groupName}>
-                    {symbols.map(s => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
-                    ))}
-                  </optgroup>
-                ));
-              })()}
-            </select>
-            {/* Custom chevron icon */}
-            <div className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 ${
-              theme === 'light' ? 'text-slate-500' : 'text-slate-400'
-            }`}>
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                <path d="M1 3l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
-              </svg>
-            </div>
+              <span>{activeSymbol}</span>
+              <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+            </button>
+
+            {isSymbolDropdownOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsSymbolDropdownOpen(false)} />
+                <div className={`absolute top-full left-0 mt-2 w-56 flex flex-col rounded-xl shadow-xl border z-50 overflow-hidden ${
+                  theme === 'light' ? 'bg-white border-slate-200' : 'bg-slate-800 border-slate-700'
+                }`}>
+                  <div className={`p-2 border-b ${theme === 'light' ? 'border-slate-100' : 'border-slate-700/50'}`}>
+                    <div className={`flex items-center gap-2 px-2 py-1.5 rounded-lg border focus-within:ring-1 ${
+                      theme === 'light' 
+                        ? 'bg-slate-50 border-slate-200 focus-within:ring-emerald-400 focus-within:border-emerald-400' 
+                        : 'bg-slate-900 border-slate-700 focus-within:ring-emerald-500 focus-within:border-emerald-500'
+                    }`}>
+                      <Search className={`w-3.5 h-3.5 ${theme === 'light' ? 'text-slate-400' : 'text-slate-500'}`} />
+                      <input
+                        type="text"
+                        placeholder="Tìm kiếm mã..."
+                        value={symbolSearch}
+                        onChange={(e) => setSymbolSearch(e.target.value)}
+                        className={`w-full bg-transparent text-xs outline-none ${theme === 'light' ? 'text-slate-800 placeholder-slate-400' : 'text-slate-200 placeholder-slate-500'}`}
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div className="overflow-y-auto max-h-[300px]">
+                    {(() => {
+                      const filtered = SUPPORTED_SYMBOLS.filter(s => s.label.toLowerCase().includes(symbolSearch.toLowerCase()) || s.value.toLowerCase().includes(symbolSearch.toLowerCase()));
+                      if (filtered.length === 0) {
+                        return <div className={`px-4 py-3 text-xs text-center ${theme === 'light' ? 'text-slate-500' : 'text-slate-400'}`}>Không tìm thấy mã</div>;
+                      }
+                      const groups = {};
+                      filtered.forEach(s => {
+                        if (!groups[s.group]) groups[s.group] = [];
+                        groups[s.group].push(s);
+                      });
+                      return Object.entries(groups).map(([groupName, symbols]) => (
+                        <div key={groupName}>
+                          <div className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider ${theme === 'light' ? 'bg-slate-50 text-slate-500' : 'bg-slate-900/30 text-slate-400'}`}>
+                            {groupName}
+                          </div>
+                          {symbols.map(s => (
+                            <button
+                              key={s.value}
+                              onClick={() => {
+                                setActiveSymbol(s.value);
+                                setIsSymbolDropdownOpen(false);
+                                setSymbolSearch('');
+                              }}
+                              className={`w-full text-left px-4 py-1.5 text-xs font-semibold transition cursor-pointer flex items-center gap-2 ${
+                                activeSymbol === s.value
+                                  ? (theme === 'light' ? 'bg-emerald-50 text-emerald-600' : 'bg-emerald-500/10 text-emerald-400')
+                                  : (theme === 'light' ? 'text-slate-700 hover:bg-slate-50 hover:text-emerald-600' : 'text-slate-300 hover:bg-slate-800 hover:text-emerald-400')
+                              }`}
+                            >
+                              <span className="w-3.5 h-3.5 flex items-center justify-center">
+                                {activeSymbol === s.value && <Check className="w-3.5 h-3.5" />}
+                              </span>
+                              <span>{s.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* ── Data Source Badge ── */}
@@ -1525,27 +1690,10 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
             }`}
             title={t('dataSourceNotice')}
           >
-            {t('source')}: {activeSymbol.startsWith('XAU') || activeSymbol.startsWith('XAG') ? 'Binance/Bybit' : 'Yahoo Finance'}
+            {t('source')}: {currentProvider === 'tiingo' ? 'Tiingo' : currentProvider === 'twelvedata' ? 'TwelveData' : currentProvider === 'yahoo_finance' ? 'Yahoo Finance' : currentProvider === 'binance_index' || currentProvider === 'bybit_index' ? 'Binance/Bybit' : currentProvider || 'Loading...'}
           </div>
 
-          {/* ── Broker Price Offset Input ── */}
-          <div className="flex items-center gap-1.5" title={t('brokerOffsetNotice')}>
-            <input
-              type="text"
-              placeholder={t('offsetPlaceholder')}
-              value={manualOffset}
-              onChange={(e) => {
-                const val = e.target.value;
-                setManualOffset(val);
-                localStorage.setItem(`chart_offset_${activeSymbol}`, val);
-              }}
-              className={`w-28 px-2 py-1.5 rounded-xl border text-xs font-semibold focus:outline-none focus:ring-1 ${
-                theme === 'light'
-                  ? 'bg-white border-slate-300 text-slate-800 placeholder-slate-400 hover:border-slate-400 focus:ring-emerald-400'
-                  : 'bg-slate-800 border-slate-600 text-white placeholder-slate-500 hover:border-slate-500 focus:ring-emerald-500'
-              }`}
-            />
-          </div>
+
 
           {/* Candle Color Mode Switcher */}
           <div className={`flex items-center p-1 rounded-xl border text-xs font-semibold ${
@@ -1624,15 +1772,23 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
                     Relative Strength Index
                   </button>
                   <button
-                    onClick={() => addIndicator('BB', 20, '#FF9800')}
+                    onClick={() => addIndicator('BB', 20, '#FF9800', { mult: 2 })}
                     className={`text-left px-4 py-2 text-xs font-semibold hover:bg-indigo-500/10 hover:text-indigo-500 transition cursor-pointer ${
                       theme === 'light' ? 'text-slate-700' : 'text-slate-200'
                     }`}
                   >
-                    Bollinger Bands
+                    Bollinger Bands (BB)
                   </button>
                   <button
-                    onClick={() => addIndicator('MACD', 0, 'transparent')}
+                    onClick={() => addIndicator('PSAR', 0, '#2196F3', { step: 0.02, maxStep: 0.2 })}
+                    className={`text-left px-4 py-2 text-xs font-semibold hover:bg-indigo-500/10 hover:text-indigo-500 transition cursor-pointer ${
+                      theme === 'light' ? 'text-slate-700' : 'text-slate-200'
+                    }`}
+                  >
+                    Parabolic SAR (PSAR)
+                  </button>
+                  <button
+                    onClick={() => addIndicator('MACD', 0, 'transparent', { fast: 12, slow: 26, signal: 9 })}
                     className={`text-left px-4 py-2 text-xs font-semibold hover:bg-indigo-500/10 hover:text-indigo-500 transition cursor-pointer ${
                       theme === 'light' ? 'text-slate-700' : 'text-slate-200'
                     }`}
@@ -1656,12 +1812,12 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
                     Average True Range (ATR)
                   </button>
                   <button
-                    onClick={() => addIndicator('Volume', 0, 'transparent')}
+                    onClick={() => addIndicator('TMA', 0, 'transparent')}
                     className={`text-left px-4 py-2 text-xs font-semibold hover:bg-indigo-500/10 hover:text-indigo-500 transition cursor-pointer ${
                       theme === 'light' ? 'text-slate-700' : 'text-slate-200'
                     }`}
                   >
-                    Khối lượng (Volume)
+                    TMA Overlay
                   </button>
                 </div>
               </div>
@@ -1799,21 +1955,24 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
                 {ind.type === 'Volume' ? (
                   <span className="drop-shadow-sm text-slate-400">Volume</span>
                 ) : ind.type === 'MACD' ? (
-                  <span className="drop-shadow-sm text-slate-400">MACD 12 26 close 9</span>
+                  <span className="drop-shadow-sm text-slate-400">MACD {ind.fast || 12} {ind.slow || 26} close {ind.signal || 9}</span>
                 ) : ind.type === 'Stoch' ? (
                   <span className="drop-shadow-sm text-slate-400">Stoch 14 1 3</span>
                 ) : ind.type === 'BB' ? (
-                  <span className="drop-shadow-sm text-slate-400">BB 20 2 close 0</span>
+                  <span className="drop-shadow-sm text-slate-400">BB {ind.length} {ind.mult !== undefined ? ind.mult : 2} close 0</span>
                 ) : ind.type === 'ATR' ? (
-                  <span className="drop-shadow-sm text-slate-400">ATR 14</span>
+                  <span className="drop-shadow-sm text-slate-400">ATR {ind.length}</span>
+                ) : ind.type === 'PSAR' ? (
+                  <span className="drop-shadow-sm text-slate-400">SAR {ind.step !== undefined ? ind.step : 0.02} {ind.maxStep !== undefined ? ind.maxStep : 0.2}</span>
                 ) : (
                   <span className="drop-shadow-sm" style={{ color: ind.color }}>{ind.type} {ind.length}</span>
                 )}
+                <span ref={el => legendValueRefs.current[ind.id] = el} className="ml-1 font-mono text-[11px] font-normal drop-shadow-sm"></span>
                 <div className="hidden group-hover:flex items-center gap-1">
                   <button onClick={() => toggleIndicatorVisibility(ind.id)} className={`p-0.5 rounded hover:bg-white/20 ${theme === 'light' ? 'text-slate-600' : 'text-slate-300'}`} title="Ẩn/Hiện">
                     <Eye className={`w-3.5 h-3.5 ${!ind.visible && 'opacity-30'}`} />
                   </button>
-                  {ind.type !== 'Volume' && ind.type !== 'MACD' && ind.type !== 'BB' && ind.type !== 'Stoch' && ind.type !== 'ATR' && (
+                  {ind.type !== 'Volume' && ind.type !== 'Stoch' && ind.type !== 'ATR' && (
                     <button onClick={() => setIndicatorConfig(activeIndicators.find(i => i.id === ind.id))} className={`p-0.5 rounded hover:bg-white/20 ${theme === 'light' ? 'text-slate-600' : 'text-slate-300'}`} title="Cài đặt">
                       <Settings className="w-3 h-3" />
                     </button>
@@ -1844,7 +2003,7 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
             setActiveTool={setActiveTool}
             tradeId={selectedTrades.length === 1 ? selectedTrades[0].id : null}
             initialDrawingsData={selectedTrades.length === 1 ? selectedTrades[0].drawings_data : null}
-            chartData={rawCandlesDataRef.current}
+            chartData={candlesDataRef.current}
           />
         )}
 
@@ -1892,17 +2051,98 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
               </div>
               
               <div className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold mb-1 opacity-80">Chu kỳ (Length)</label>
-                  <input 
-                    type="number" 
-                    value={indicatorConfig.length} 
-                    onChange={(e) => setIndicatorConfig(prev => ({ ...prev, length: e.target.value }))}
-                    className={`w-full px-2 py-1.5 rounded-lg border text-sm ${
-                      theme === 'light' ? 'bg-slate-50 border-slate-300' : 'bg-slate-800 border-slate-600 text-white'
-                    }`}
-                  />
-                </div>
+                {indicatorConfig.type !== 'PSAR' && indicatorConfig.type !== 'MACD' && (
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 opacity-80">Chu kỳ (Length)</label>
+                    <input 
+                      type="number" 
+                      value={indicatorConfig.length} 
+                      onChange={(e) => setIndicatorConfig(prev => ({ ...prev, length: e.target.value }))}
+                      className={`w-full px-2 py-1.5 rounded-lg border text-sm ${
+                        theme === 'light' ? 'bg-slate-50 border-slate-300' : 'bg-slate-800 border-slate-600 text-white'
+                      }`}
+                    />
+                  </div>
+                )}
+                {indicatorConfig.type === 'MACD' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 opacity-80">Đường nhanh (Fast Length)</label>
+                      <input 
+                        type="number" 
+                        value={indicatorConfig.fast !== undefined ? indicatorConfig.fast : 12} 
+                        onChange={(e) => setIndicatorConfig(prev => ({ ...prev, fast: e.target.value }))}
+                        className={`w-full px-2 py-1.5 rounded-lg border text-sm ${
+                          theme === 'light' ? 'bg-slate-50 border-slate-300' : 'bg-slate-800 border-slate-600 text-white'
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 opacity-80">Đường chậm (Slow Length)</label>
+                      <input 
+                        type="number" 
+                        value={indicatorConfig.slow !== undefined ? indicatorConfig.slow : 26} 
+                        onChange={(e) => setIndicatorConfig(prev => ({ ...prev, slow: e.target.value }))}
+                        className={`w-full px-2 py-1.5 rounded-lg border text-sm ${
+                          theme === 'light' ? 'bg-slate-50 border-slate-300' : 'bg-slate-800 border-slate-600 text-white'
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 opacity-80">Tín hiệu (Signal Smoothing)</label>
+                      <input 
+                        type="number" 
+                        value={indicatorConfig.signal !== undefined ? indicatorConfig.signal : 9} 
+                        onChange={(e) => setIndicatorConfig(prev => ({ ...prev, signal: e.target.value }))}
+                        className={`w-full px-2 py-1.5 rounded-lg border text-sm ${
+                          theme === 'light' ? 'bg-slate-50 border-slate-300' : 'bg-slate-800 border-slate-600 text-white'
+                        }`}
+                      />
+                    </div>
+                  </>
+                )}
+                {indicatorConfig.type === 'PSAR' && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 opacity-80">Gia tốc (Step)</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        value={indicatorConfig.step !== undefined ? indicatorConfig.step : 0.02} 
+                        onChange={(e) => setIndicatorConfig(prev => ({ ...prev, step: e.target.value }))}
+                        className={`w-full px-2 py-1.5 rounded-lg border text-sm ${
+                          theme === 'light' ? 'bg-slate-50 border-slate-300' : 'bg-slate-800 border-slate-600 text-white'
+                        }`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold mb-1 opacity-80">Giới hạn (Max Step)</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        value={indicatorConfig.maxStep !== undefined ? indicatorConfig.maxStep : 0.2} 
+                        onChange={(e) => setIndicatorConfig(prev => ({ ...prev, maxStep: e.target.value }))}
+                        className={`w-full px-2 py-1.5 rounded-lg border text-sm ${
+                          theme === 'light' ? 'bg-slate-50 border-slate-300' : 'bg-slate-800 border-slate-600 text-white'
+                        }`}
+                      />
+                    </div>
+                  </>
+                )}
+                {indicatorConfig.type === 'BB' && (
+                  <div>
+                    <label className="block text-xs font-semibold mb-1 opacity-80">Độ lệch chuẩn (StdDev)</label>
+                    <input 
+                      type="number" 
+                      step="0.1"
+                      value={indicatorConfig.mult !== undefined ? indicatorConfig.mult : 2} 
+                      onChange={(e) => setIndicatorConfig(prev => ({ ...prev, mult: e.target.value }))}
+                      className={`w-full px-2 py-1.5 rounded-lg border text-sm ${
+                        theme === 'light' ? 'bg-slate-50 border-slate-300' : 'bg-slate-800 border-slate-600 text-white'
+                      }`}
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="block text-xs font-semibold mb-1 opacity-80">Màu sắc (Color)</label>
                   <input 
@@ -1919,7 +2159,17 @@ export default function TradingViewStudioChart({ selectedTrades = [], onClearAll
                   onClick={() => {
                     updateIndicator(indicatorConfig.id, { 
                       length: parseInt(indicatorConfig.length) || 9, 
-                      color: indicatorConfig.color 
+                      color: indicatorConfig.color,
+                      ...(indicatorConfig.type === 'BB' && { mult: parseFloat(indicatorConfig.mult) || 2 }),
+                      ...(indicatorConfig.type === 'PSAR' && { 
+                        step: parseFloat(indicatorConfig.step) || 0.02,
+                        maxStep: parseFloat(indicatorConfig.maxStep) || 0.2
+                      }),
+                      ...(indicatorConfig.type === 'MACD' && { 
+                        fast: parseInt(indicatorConfig.fast) || 12,
+                        slow: parseInt(indicatorConfig.slow) || 26,
+                        signal: parseInt(indicatorConfig.signal) || 9
+                      })
                     });
                     setIndicatorConfig(null);
                   }}

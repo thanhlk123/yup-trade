@@ -303,25 +303,24 @@ export default function HiddenChartGenerator({ trade, isBackground = false, onCo
           const startTs = parseDbUtcToTimestamp(trade.trade_time);
           const endTs   = trade.exit_time ? parseDbUtcToTimestamp(trade.exit_time) : startTs + 3600;
 
-          const totalDurationSec  = endTs - startTs;
-          const candlesInTrade    = Math.max(1, Math.ceil(totalDurationSec / intervalSec));
-          const targetCandleCount = 140; // TradingView native auto mode density (~140 candles)
-          const paddingCandles    = Math.max(15, Math.ceil((targetCandleCount - candlesInTrade) / 2));
-
-          const fetchStartMs = (startTs - paddingCandles * intervalSec * 2) * 1000;
-          const fetchEndMs   = (endTs   + paddingCandles * intervalSec * 2) * 1000;
+          // ── Fetch window: fixed 300-candle padding each side (same as Studio applyViewport) ──
+          const fetchStartMs = (startTs - 300 * intervalSec) * 1000;
+          const fetchEndMs   = (endTs   + 300 * intervalSec) * 1000;
 
           try {
-            const url = `/api/klines?symbol=${trade.asset || 'XAUUSD'}&interval=${apiInterval}&limit=1000&startTime=${Math.floor(fetchStartMs)}&endTime=${Math.floor(fetchEndMs)}`;
+            const encodedSymbol = encodeURIComponent(trade.asset || 'XAUUSD');
+            const url = `/api/klines?symbol=${encodedSymbol}&interval=${apiInterval}&limit=1000&startTime=${Math.floor(fetchStartMs)}&endTime=${Math.floor(fetchEndMs)}`;
             const res  = await fetch(url);
             const json = await res.json();
             if (!json.success || json.data.length === 0) continue;
 
             tfSeries.setData(json.data);
 
-            const totalCandles = json.data.length;
-            const lastCandleIdx = totalCandles - 1;
+            const totalCandles    = json.data.length;
+            const lastCandleIdx   = totalCandles - 1;
+            const targetCandleCount = 140; // TradingView native auto mode density (~140 candles)
 
+            // ── Viewport: mirror Studio's applyViewport exactly ──────────────
             const startIdx = findContainingCandleIndex(json.data, startTs);
             let   endIdx   = findContainingCandleIndex(json.data, endTs);
             if (endIdx < startIdx) endIdx = startIdx;
@@ -329,17 +328,15 @@ export default function HiddenChartGenerator({ trade, isBackground = false, onCo
             const tradeCandleCount = endIdx - startIdx + 1;
             const idealPad = Math.max(15, Math.ceil((targetCandleCount - tradeCandleCount) / 2));
 
-            // Clamp right boundary so recent H1/H4/D1 trades don't leave huge blank space into the future
-            let toIdx = Math.min(lastCandleIdx + 4, endIdx + idealPad);
+            // toIdx: clamp so we don't leave blank future space (same as Studio)
+            let toIdx   = Math.min(lastCandleIdx + 4, endIdx + idealPad);
+            // fromIdx: pull back from toIdx to guarantee 140-candle viewport
             let fromIdx = Math.max(0, toIdx - targetCandleCount);
 
-            tfChart.timeScale().setVisibleLogicalRange({
-              from: fromIdx,
-              to:   toIdx,
-            });
+            tfChart.timeScale().setVisibleLogicalRange({ from: fromIdx, to: toIdx });
 
-            const waitMs = intervalSec >= 3600 ? 800 : 500;
-            await new Promise(r => setTimeout(r, waitMs));
+            // ── Wait 800ms for all TFs — ensures chart renders before screenshot ──
+            await new Promise(r => setTimeout(r, 800));
             if (isCancelled) break;
 
             const mainCanvas = tfChart.takeScreenshot();
