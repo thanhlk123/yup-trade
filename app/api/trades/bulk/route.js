@@ -38,25 +38,70 @@ export async function POST(request) {
           image_url = null
         } = trade;
 
+        // Auto-fill logic
+        let inferredSide = side;
+        if (!inferredSide && entry_price && exit_price && pnl !== undefined) {
+          if (pnl > 0) inferredSide = exit_price > entry_price ? 'BUY' : 'SELL';
+          else if (pnl < 0) inferredSide = exit_price < entry_price ? 'BUY' : 'SELL';
+          else inferredSide = 'BUY'; // default fallback
+        }
+
         // Perform basic validations
-        if (!asset || !side || size === undefined || pnl === undefined) {
+        if (!asset || !inferredSide || size === undefined || pnl === undefined) {
           throw new Error('Thiếu thông tin bắt buộc trong một số lệnh.');
         }
+
+        const upperSide = inferredSide.toUpperCase();
 
         // Check for duplicates
         const existing = await db.get(
           `SELECT id FROM trades 
            WHERE asset = ? 
-             AND side = ? 
-             AND ABS(strftime('%s', trade_time) - strftime('%s', ?)) < 60 
-             AND ABS(size - ?) < 0.0001 
-             AND ABS(pnl - ?) < 0.01`,
-          [asset, side.toUpperCase(), trade_time, parseFloat(size), parseFloat(pnl)]
+              AND side = ? 
+              AND ABS(strftime('%s', trade_time) - strftime('%s', ?)) < 60 
+              AND ABS(size - ?) < 0.0001 
+              AND ABS(pnl - ?) < 0.01`,
+          [asset, upperSide, trade_time, parseFloat(size), parseFloat(pnl)]
         );
 
         if (existing) {
           skippedCount++;
           continue;
+        }
+
+        // Session Inference
+        let session = 'Unknown';
+        if (trade_time) {
+          const date = new Date(trade_time);
+          const hourUtc = date.getUTCHours();
+          if (hourUtc >= 0 && hourUtc < 8) session = 'Asian';
+          else if (hourUtc >= 8 && hourUtc < 13) session = 'London';
+          else session = 'NY';
+        }
+
+        // Duration Inference
+        let duration = 'Unknown';
+        if (trade_time && exit_time) {
+          const start = new Date(trade_time).getTime();
+          const end = new Date(exit_time).getTime();
+          const diffMins = (end - start) / (1000 * 60);
+          if (diffMins < 30) duration = 'Scalping';
+          else if (diffMins <= 24 * 60) duration = 'Intraday';
+          else duration = 'Swing';
+        }
+
+        // R:R Calculation
+        let planned_rr = null;
+        let actual_rr = null;
+        if (entry_price && stop_loss && entry_price !== stop_loss) {
+          const risk = Math.abs(entry_price - stop_loss);
+          if (take_profit) {
+            planned_rr = Math.abs(take_profit - entry_price) / risk;
+          }
+          if (exit_price) {
+            actual_rr = Math.abs(exit_price - entry_price) / risk;
+            if (pnl < 0) actual_rr = -actual_rr; // Negative RR for losses
+          }
         }
 
         // Format ai_evaluation if present, otherwise build a simple default
@@ -72,11 +117,11 @@ export async function POST(request) {
           `INSERT INTO trades (
             asset, side, entry_price, exit_price, stop_loss, take_profit, 
             size, pnl, status, trade_time, exit_time, user_notes, setup_tag, ai_evaluation,
-            trade_type, image_url
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            trade_type, image_url, session, duration, planned_rr, actual_rr
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             asset,
-            side.toUpperCase(),
+            upperSide,
             parseFloat(entry_price),
             parseFloat(exit_price),
             stop_loss ? parseFloat(stop_loss) : null,
@@ -90,7 +135,11 @@ export async function POST(request) {
             setup_tag || aiResult.setup_tag || 'Unclassified',
             JSON.stringify(aiResult),
             trade_type || 'LIVE',
-            image_url || null
+            image_url || null,
+            session,
+            duration,
+            planned_rr,
+            actual_rr
           ]
         );
 

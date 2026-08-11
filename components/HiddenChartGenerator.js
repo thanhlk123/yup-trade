@@ -19,7 +19,7 @@ function findContainingCandleIndex(candles, targetTs) {
   return idx === -1 ? 0 : idx;
 }
 
-export default function HiddenChartGenerator({ trade, isBackground = false, onComplete }) {
+export default function HiddenChartGenerator({ trade, isBackground = false, existingImageCount = 0, onComplete }) {
   const [progress, setProgress] = useState('');
 
   // ─── Draw overlay: badge + trade position lines ────────────────────────────
@@ -257,6 +257,8 @@ export default function HiddenChartGenerator({ trade, isBackground = false, onCo
         { tf: '240', apiInterval: '4h',  intervalSec: 14400 },
         { tf: 'D',   apiInterval: '1d',  intervalSec: 86400 },
       ];
+      const maxToGenerate = Math.max(0, 10 - existingImageCount);
+      const limitedTimeframes = timeframeConfigs.slice(0, maxToGenerate);
 
       const candleOptions = {
         upColor: '#ffffff', borderUpColor: '#000000', wickUpColor: '#000000',
@@ -296,7 +298,7 @@ export default function HiddenChartGenerator({ trade, isBackground = false, onCo
           ? tfChart.addCandlestickSeries(candleOptions)
           : tfChart.addSeries(CandlestickSeries, candleOptions);
 
-        for (const { tf, apiInterval, intervalSec } of timeframeConfigs) {
+        for (const { tf, apiInterval, intervalSec } of limitedTimeframes) {
           if (isCancelled) break;
           setProgress(`Đang tạo biểu đồ ${apiInterval}...`);
 

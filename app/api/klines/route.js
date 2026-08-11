@@ -108,33 +108,48 @@ async function fetchTiingoKlines(symbol, interval, startTime, endTime) {
   
   const resampleFreq = tiingoIntervalMap[key] || '5min';
   const tiingoSymbol = symbol.toLowerCase();
+  const envKeys = [
+    process.env.TIINGO_API_KEY,
+    process.env.TIINGO_API_KEY_2,
+    process.env.TIINGO_API_KEY_3
+  ].filter(Boolean);
+  const apiKeys = envKeys.length > 0 ? envKeys : ['fe7e2330a3175b6831505e791229ac3350743181', 'cfc86eb31270ea16e1da688d9014d3c5a61bd78f', '6173ba326527fe6782ff56ca75536d6c5c6b83a0'];
   
-  const apiKey = process.env.TIINGO_API_KEY || 'fe7e2330a3175b6831505e791229ac3350743181';
-  let url = `https://api.tiingo.com/tiingo/fx/${tiingoSymbol}/prices?resampleFreq=${resampleFreq}&token=${apiKey}`;
-  
-  if (startTime) {
-    url += `&startDate=${new Date(parseInt(startTime)).toISOString()}`;
-  }
-  if (endTime) {
-    url += `&endDate=${new Date(parseInt(endTime)).toISOString()}`;
-  }
-
-  try {
-    const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, next: { revalidate: 15 } });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (Array.isArray(data) && data.length > 0) {
-      return data.map(d => ({
-        time: Math.floor(new Date(d.date).getTime() / 1000),
-        open: parseFloat(d.open),
-        high: parseFloat(d.high),
-        low: parseFloat(d.low),
-        close: parseFloat(d.close),
-        volume: 0
-      })).sort((a, b) => a.time - b.time);
+  for (const apiKey of apiKeys) {
+    let url = `https://api.tiingo.com/tiingo/fx/${tiingoSymbol}/prices?resampleFreq=${resampleFreq}&token=${apiKey}`;
+    
+    if (startTime) {
+      url += `&startDate=${new Date(parseInt(startTime)).toISOString()}`;
     }
-  } catch (e) {
-    console.error('Tiingo fetch error:', e);
+    if (endTime) {
+      url += `&endDate=${new Date(parseInt(endTime)).toISOString()}`;
+    }
+
+    try {
+      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' }, next: { revalidate: 15 } });
+      if (!res.ok) {
+        if (res.status === 429) continue;
+        continue;
+      }
+      const data = await res.json();
+      // Detail response error
+      if (data.detail && typeof data.detail === 'string' && data.detail.includes('limit')) {
+        continue;
+      }
+      if (Array.isArray(data) && data.length > 0) {
+        return data.map(d => ({
+          time: Math.floor(new Date(d.date).getTime() / 1000),
+          open: parseFloat(d.open),
+          high: parseFloat(d.high),
+          low: parseFloat(d.low),
+          close: parseFloat(d.close),
+          volume: 0
+        })).sort((a, b) => a.time - b.time);
+      }
+      if (Array.isArray(data)) return [];
+    } catch (e) {
+      console.error('Tiingo fetch error:', e);
+    }
   }
   return null;
 }
@@ -159,26 +174,44 @@ async function fetchTwelveDataKlines(symbol, interval, limit) {
     tdSymbol = symbol.slice(0, 3) + '/' + symbol.slice(3); // e.g. EUR/USD
   }
   const safeLimit = Math.min(parseInt(limit) || 1000, 1000);
+  const envKeys = [
+    process.env.TWELVEDATA_API_KEY,
+    process.env.TWELVEDATA_API_KEY_2,
+    process.env.TWELVEDATA_API_KEY_3
+  ].filter(Boolean);
+  const apiKeys = envKeys.length > 0 ? envKeys : ['768f1eba580d41598f5cba2f748fa272', '25fa814b19ad4be0b025832e024d868b', 'e5329b9159a244659209bd5590fedc54'];
   
-  const apiKey = process.env.TWELVEDATA_API_KEY || '768f1eba580d41598f5cba2f748fa272';
-  let url = `https://api.twelvedata.com/time_series?symbol=${tdSymbol}&interval=${tdInterval}&outputsize=${safeLimit}&timezone=UTC&apikey=${apiKey}`;
-  
-  try {
-    const res = await fetch(url, { next: { revalidate: 15 } });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (data.status === 'ok' && Array.isArray(data.values) && data.values.length > 0) {
-      return data.values.map(d => ({
-        time: Math.floor(new Date(d.datetime + 'Z').getTime() / 1000),
-        open: parseFloat(d.open),
-        high: parseFloat(d.high),
-        low: parseFloat(d.low),
-        close: parseFloat(d.close),
-        volume: 0
-      })).sort((a, b) => a.time - b.time);
+  for (const apiKey of apiKeys) {
+    let url = `https://api.twelvedata.com/time_series?symbol=${tdSymbol}&interval=${tdInterval}&outputsize=${safeLimit}&timezone=UTC&apikey=${apiKey}`;
+    
+    try {
+      const res = await fetch(url, { next: { revalidate: 15 } });
+      if (!res.ok) {
+        if (res.status === 429) continue;
+        continue;
+      }
+      const data = await res.json();
+      
+      if (data.status === 'error') {
+        if (data.code === 429) continue;
+        return null;
+      }
+      
+      if (data.status === 'ok' && Array.isArray(data.values) && data.values.length > 0) {
+        return data.values.map(d => ({
+          time: Math.floor(new Date(d.datetime + 'Z').getTime() / 1000),
+          open: parseFloat(d.open),
+          high: parseFloat(d.high),
+          low: parseFloat(d.low),
+          close: parseFloat(d.close),
+          volume: 0
+        })).sort((a, b) => a.time - b.time);
+      }
+      
+      if (data.status === 'ok') return [];
+    } catch (e) {
+      console.error('TwelveData fetch error:', e);
     }
-  } catch (e) {
-    console.error('TwelveData fetch error:', e);
   }
   return null;
 }

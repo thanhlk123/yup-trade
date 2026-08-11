@@ -3,48 +3,73 @@ import { getDb } from '@/lib/db';
 import { getGeminiModels } from '@/lib/ai-agent';
 import { OFFICIAL_HASHTAGS } from '@/lib/hashtags';
 
-// Fallback AI analysis function for new hashtags
-function analyzeNewHashtagLocally(inputText) {
+export function normalizeSlug(text) {
+  if (!text) return '';
+  return text.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd').replace(/Đ/g, 'd')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+}
+
+function analyzeNewHashtagLocally(inputText, explicitCategory) {
   const text = inputText.trim();
   const lower = text.toLowerCase();
 
-  let category = 'setups';
-  let prefix = '#Setup_';
+  let category = explicitCategory || 'setups';
+  
+  const getPrefixForCategory = (cat) => {
+    if (cat === 'setups') return '#Setup_';
+    if (cat === 'mistakes') return '#Mistake_';
+    if (cat === 'strengths') return '#Strength_';
+    if (cat === 'trends') return '#Trend_';
+    if (cat === 'sessions') return '#Session_';
+    if (cat === 'triggers') return '#Trigger_';
+    if (cat === 'management') return '#Mgmt_';
+    if (cat === 'confluences') return '#Confluence_';
+    return '#Custom_';
+  };
+  
+  let prefix = getPrefixForCategory(category);
   let color = 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
   let group = 'Setup Phương Pháp';
   let riskLevel = 'Trung Bình';
 
-  // Determine category & prefix
-  if (lower.includes('lỗi') || lower.includes('mistake') || lower.includes('fomo') || lower.includes('dca') || lower.includes('cay cú') || lower.includes('trả thù') || lower.includes('gồng lỗ') || lower.includes('ẩu')) {
-    category = 'mistakes';
-    prefix = '#Mistake_';
-    color = 'text-rose-400 border-rose-500/30 bg-rose-500/10';
-    group = 'Lỗi Tâm Lý / Kỹ Thuật';
-    riskLevel = 'Cao';
-  } else if (lower.includes('kỷ luật') || lower.includes('tốt') || lower.includes('strength') || lower.includes('thói quen') || lower.includes('stop loss') || lower.includes('sl chuẩn') || lower.includes('kiên nhẫn')) {
-    category = 'strengths';
-    prefix = '#Strength_';
-    color = 'text-sky-400 border-sky-500/30 bg-sky-500/10';
-    group = 'Thói Quen Tốt & Kỷ Luật';
-    riskLevel = 'Thói Quen Tốt';
-  } else if (lower.includes('trend') || lower.includes('xu hướng') || lower.includes('sideway') || lower.includes('bullish') || lower.includes('bearish') || lower.includes('sóng')) {
-    category = 'trends';
-    prefix = '#Trend_';
-    color = 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10';
-    group = 'Xu Hướng Thị Trường';
-    riskLevel = 'Trung Bình';
-  } else if (lower.includes('phiên') || lower.includes('session') || lower.includes('á') || lower.includes('âu') || lower.includes('mỹ')) {
-    category = 'sessions';
-    prefix = '#Session_';
-    color = 'text-amber-400 border-amber-500/30 bg-amber-500/10';
-    group = 'Khung Thời Gian';
-    riskLevel = 'Thấp';
+  // If no explicit category, determine category heuristically
+  if (!explicitCategory) {
+    if (lower.includes('lỗi') || lower.includes('mistake') || lower.includes('fomo') || lower.includes('dca') || lower.includes('cay cú') || lower.includes('trả thù') || lower.includes('gồng lỗ') || lower.includes('ẩu')) {
+      category = 'mistakes';
+      prefix = '#Mistake_';
+      color = 'text-rose-400 border-rose-500/30 bg-rose-500/10';
+      group = 'Lỗi Tâm Lý / Kỹ Thuật';
+      riskLevel = 'Cao';
+    } else if (lower.includes('kỷ luật') || lower.includes('tốt') || lower.includes('strength') || lower.includes('thói quen') || lower.includes('stop loss') || lower.includes('sl chuẩn') || lower.includes('kiên nhẫn')) {
+      category = 'strengths';
+      prefix = '#Strength_';
+      color = 'text-sky-400 border-sky-500/30 bg-sky-500/10';
+      group = 'Thói Quen Tốt & Kỷ Luật';
+      riskLevel = 'Thói Quen Tốt';
+    } else if (lower.includes('trend') || lower.includes('xu hướng') || lower.includes('sideway') || lower.includes('bullish') || lower.includes('bearish') || lower.includes('sóng')) {
+      category = 'trends';
+      prefix = '#Trend_';
+      color = 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10';
+      group = 'Xu Hướng Thị Trường';
+      riskLevel = 'Trung Bình';
+    } else if (lower.includes('phiên') || lower.includes('session') || lower.includes('á') || lower.includes('âu') || lower.includes('mỹ')) {
+      category = 'sessions';
+      prefix = '#Session_';
+      color = 'text-amber-400 border-amber-500/30 bg-amber-500/10';
+      group = 'Khung Thời Gian';
+      riskLevel = 'Thấp';
+    }
   }
 
   // Format clean tag name
   let cleanName = text
     .replace(/^#/, '')
-    .replace(/^(Setup_|Mistake_|Strength_|Trend_|Session_)/i, '')
+    .replace(/^(Setup_|Mistake_|Strength_|Trend_|Session_|Trigger_|Mgmt_|Confluence_)/i, '')
     .replace(/[^a-zA-Z0-9\u00C0-\u024F\u1EA0-\u1EF9]+/g, '');
 
   if (!cleanName) cleanName = 'CustomTag_' + Math.floor(Math.random() * 1000);
@@ -86,7 +111,9 @@ export async function GET() {
 
     const rows = await db.all('SELECT * FROM custom_hashtags WHERE is_deleted = 0 OR is_deleted IS NULL ORDER BY id DESC');
     const customTags = rows.map(r => ({
+      id: r.id,
       tag: r.tag,
+      slug: r.slug || normalizeSlug(r.label || r.tag),
       label: r.label || r.tag,
       category: r.category,
       group: r.group_name || 'Hashtag Tự Tạo',
@@ -96,6 +123,9 @@ export async function GET() {
       color: r.color || 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
       isCustom: true,
     }));
+
+    // Optionally fetch tag aliases to attach to customTags? 
+    // For now, returning customTags is enough for client-side fuzzy search.
 
     return NextResponse.json({ success: true, data: customTags });
   } catch (error) {
@@ -107,7 +137,7 @@ export async function GET() {
 export async function POST(req) {
   try {
     const body = await req.json();
-    const { input } = body;
+    const { input, category: explicitCategory } = body;
 
     if (!input || !input.trim()) {
       return NextResponse.json({ success: false, error: 'Thiếu từ khóa hashtag' }, { status: 400 });
@@ -119,15 +149,30 @@ export async function POST(req) {
     // Check if Gemini API Key exists for AI classification
     const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
+    // Define prefixes based on category
+    const getPrefixForCategory = (cat) => {
+      if (cat === 'setups') return '#Setup_';
+      if (cat === 'mistakes') return '#Mistake_';
+      if (cat === 'strengths') return '#Strength_';
+      if (cat === 'trends') return '#Trend_';
+      if (cat === 'sessions') return '#Session_';
+      if (cat === 'triggers') return '#Trigger_';
+      if (cat === 'management') return '#Mgmt_';
+      if (cat === 'confluences') return '#Confluence_';
+      return '#Custom_';
+    };
+
     if (apiKey) {
       try {
         const models = getGeminiModels();
+        const expectedCategoryStr = explicitCategory ? `BẮT BUỘC trả về category: "${explicitCategory}".` : '';
         const prompt = `Bạn là chuyên gia số hóa Trading Methodology. Hãy phân tích từ khóa hashtag mới: "${textInput}".
+${expectedCategoryStr}
 Trả về duy nhất 1 chuỗi JSON theo format sau:
 {
-  "tag": "#Prefix_Name", (prefix bắt buộc là #Setup_, #Mistake_, #Strength_, #Trend_, hoặc #Session_)
+  "tag": "#Prefix_Name", (ví dụ: #Setup_, #Mistake_, #Trigger_, #Mgmt_, #Confluence_)
   "label": "Tên Ngắn Gọn Tiếng Việt",
-  "category": "setups" | "mistakes" | "strengths" | "trends" | "sessions",
+  "category": "setups" | "mistakes" | "strengths" | "trends" | "sessions" | "triggers" | "management" | "confluences",
   "group": "Tên Nhóm Phù Hợp",
   "description": "Giải thích ngắn gọn 1-2 câu ý nghĩa thực chiến",
   "rules": "Quy tắc vào lệnh hoặc bài học phòng tránh ngắn gọn",
@@ -153,16 +198,30 @@ Trả về duy nhất 1 chuỗi JSON theo format sau:
             strengths: 'text-sky-400 border-sky-500/30 bg-sky-500/10',
             trends: 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10',
             sessions: 'text-amber-400 border-amber-500/30 bg-amber-500/10',
+            triggers: 'text-indigo-400 border-indigo-500/30 bg-indigo-500/10',
+            management: 'text-fuchsia-400 border-fuchsia-500/30 bg-fuchsia-500/10',
+            confluences: 'text-orange-400 border-orange-500/30 bg-orange-500/10',
           };
+          
+          const finalCategory = explicitCategory || parsed.category || 'setups';
+          let finalTag = parsed.tag;
+          if (!finalTag.startsWith('#')) finalTag = `#${finalTag}`;
+          
+          // Force correct prefix if the AI got it wrong
+          const correctPrefix = getPrefixForCategory(finalCategory);
+          if (!finalTag.startsWith(correctPrefix)) {
+            finalTag = correctPrefix + finalTag.replace(/^#([A-Za-z]+_)?/, '');
+          }
+
           analyzedHashtag = {
-            tag: parsed.tag.startsWith('#') ? parsed.tag : `#${parsed.tag}`,
+            tag: finalTag,
             label: parsed.label || textInput,
-            category: parsed.category || 'setups',
+            category: finalCategory,
             group: parsed.group || 'Setup Tự Tạo',
-            description: parsed.description || `Mô tả cho hashtag ${parsed.tag}`,
-            rules: parsed.rules || `Quy tắc giao dịch cho ${parsed.tag}`,
+            description: parsed.description || `Mô tả cho hashtag ${finalTag}`,
+            rules: parsed.rules || `Quy tắc giao dịch cho ${finalTag}`,
             riskLevel: parsed.riskLevel || 'Trung Bình',
-            color: colorMap[parsed.category] || colorMap.setups,
+            color: colorMap[finalCategory] || colorMap.setups,
           };
         }
       } catch (aiErr) {
@@ -177,20 +236,53 @@ Trả về duy nhất 1 chuỗi JSON theo format sau:
 
     // Save to database
     const db = await getDb();
-    await db.run(
-      `INSERT OR REPLACE INTO custom_hashtags (tag, label, category, group_name, description, rules, risk_level, color)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        analyzedHashtag.tag,
-        analyzedHashtag.label,
-        analyzedHashtag.category,
-        analyzedHashtag.group,
-        analyzedHashtag.description,
-        analyzedHashtag.rules,
-        analyzedHashtag.riskLevel,
-        analyzedHashtag.color,
-      ]
-    );
+    
+    // First check if it exists by slug or alias
+    const newSlug = normalizeSlug(analyzedHashtag.label);
+    
+    // Check aliases first
+    const aliasMatch = await db.get(`
+      SELECT c.* FROM custom_hashtags c
+      JOIN tag_aliases a ON c.id = a.hashtag_id
+      WHERE a.alias_slug = ?
+    `, [newSlug]);
+    
+    if (aliasMatch) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          tag: aliasMatch.tag,
+          label: aliasMatch.label,
+          slug: aliasMatch.slug,
+          category: aliasMatch.category,
+          group: aliasMatch.group_name,
+          color: aliasMatch.color,
+          isCustom: true
+        },
+        message: `Đã tự động chuyển về thẻ gốc: ${aliasMatch.label}`
+      });
+    }
+
+    const existingBySlug = await db.get('SELECT id FROM custom_hashtags WHERE slug = ?', [newSlug]);
+    if (existingBySlug) {
+       await db.run('UPDATE custom_hashtags SET label = ?, tag = ? WHERE id = ?', [analyzedHashtag.label, analyzedHashtag.tag, existingBySlug.id]);
+    } else {
+       await db.run(
+         `INSERT OR REPLACE INTO custom_hashtags (tag, slug, label, category, group_name, description, rules, risk_level, color)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         [
+           analyzedHashtag.tag,
+           newSlug,
+           analyzedHashtag.label,
+           analyzedHashtag.category,
+           analyzedHashtag.group,
+           analyzedHashtag.description,
+           analyzedHashtag.rules,
+           analyzedHashtag.riskLevel,
+           analyzedHashtag.color,
+         ]
+       );
+    }
 
     return NextResponse.json({
       success: true,
@@ -228,7 +320,21 @@ export async function PUT(req) {
       }
     }
 
-    await db.run('UPDATE custom_hashtags SET tag = ?, label = ? WHERE tag = ?', [newTag, newLabel, oldTag]);
+    const currentTag = await db.get('SELECT id, slug, label FROM custom_hashtags WHERE tag = ?', [oldTag]);
+    const newSlug = normalizeSlug(newLabel);
+    
+    await db.run('UPDATE custom_hashtags SET tag = ?, label = ?, slug = ? WHERE tag = ?', [newTag, newLabel, newSlug, oldTag]);
+    
+    if (currentTag && currentTag.slug && currentTag.slug !== newSlug) {
+       // Insert old slug to aliases
+       await db.run('INSERT OR IGNORE INTO tag_aliases (hashtag_id, alias_slug) VALUES (?, ?)', [currentTag.id, currentTag.slug]);
+       // Maybe also add the old label normalized just in case
+       const oldLabelSlug = normalizeSlug(currentTag.label);
+       if (oldLabelSlug !== currentTag.slug && oldLabelSlug !== newSlug) {
+          await db.run('INSERT OR IGNORE INTO tag_aliases (hashtag_id, alias_slug) VALUES (?, ?)', [currentTag.id, oldLabelSlug]);
+       }
+    }
+
     await db.run('UPDATE trades SET setup_tag = ? WHERE setup_tag = ?', [newTag, oldTag]);
 
     return NextResponse.json({ success: true, message: 'Đã cập nhật hashtag', newTag });

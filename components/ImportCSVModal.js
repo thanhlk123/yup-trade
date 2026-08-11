@@ -45,9 +45,10 @@ export const safeParseDate = (dateStr) => {
   return new Date(cleaned);
 };
 
+const pad = (n) => String(n).padStart(2, '0');
+
 export const formatToSqlDateTime = (date) => {
   if (!date || isNaN(date.getTime())) return null;
-  const pad = (n) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 };
 
@@ -57,6 +58,7 @@ export const convertToUtcSql = (dateStr, sourceOffsetHours = 0) => {
 
   // Try matching numeric date format "YYYY-MM-DD HH:mm:ss" or "YYYY/MM/DD HH:mm:ss"
   const matchIso = str.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})[\sT](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+  let utcDate;
   if (matchIso) {
     const year = parseInt(matchIso[1], 10);
     const month = parseInt(matchIso[2], 10) - 1;
@@ -65,20 +67,386 @@ export const convertToUtcSql = (dateStr, sourceOffsetHours = 0) => {
     const min = parseInt(matchIso[5], 10);
     const sec = parseInt(matchIso[6] || '0', 10);
 
-    const utcDate = new Date(Date.UTC(year, month, day, hour - sourceOffsetHours, min, sec));
-
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
+    utcDate = new Date(Date.UTC(year, month, day, hour - sourceOffsetHours, min, sec));
+  } else {
+    const parsed = safeParseDate(str);
+    if (!parsed || isNaN(parsed.getTime())) return null;
+    utcDate = new Date(parsed.getTime() - (sourceOffsetHours * 60 * 60 * 1000));
   }
 
-  const parsed = safeParseDate(str);
-  if (!parsed || isNaN(parsed.getTime())) return null;
-  
-  // Shift to convert from sourceOffsetHours to UTC
-  const utcDate = new Date(parsed.getTime() - (sourceOffsetHours * 60 * 60 * 1000));
-  
-  const pad = (n) => String(n).padStart(2, '0');
   return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
+};
+
+const getTimeMs = (timeStr, fallbackTimeStr) => {
+  if (!timeStr) {
+    if (fallbackTimeStr) return getTimeMs(fallbackTimeStr);
+    return 0;
+  }
+  const d = safeParseDate(timeStr);
+  return d && !isNaN(d.getTime()) ? d.getTime() : 0;
+};
+
+const parseCSVText = (text) => {
+  const lines = [];
+  let row = [""];
+  let inQuotes = false;
+  
+  const firstLine = text.split('\n')[0] || '';
+  const commas = (firstLine.match(/,/g) || []).length;
+  const semicolons = (firstLine.match(/;/g) || []).length;
+  const separator = commas >= semicolons ? ',' : ';';
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const next = text[i + 1];
+
+    if (inQuotes) {
+      if (c === '"') {
+        if (next === '"') {
+          row[row.length - 1] += '"';
+          i++; 
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        row[row.length - 1] += c;
+      }
+    } else {
+      if (c === '"') {
+        inQuotes = true;
+      } else if (c === separator) {
+        row.push("");
+      } else if (c === '\r' || c === '\n') {
+        if (c === '\r' && next === '\n') i++; 
+        lines.push(row);
+        row = [""];
+      } else {
+        row[row.length - 1] += c;
+      }
+    }
+  }
+  if (row.length > 1 || row[0] !== "") lines.push(row);
+  return lines;
+};
+
+const findHeaderAndMap = (rows) => {
+  const exactKeywords = {
+    asset: ['asset', 'symbol', 'pair', 'cặp tiền', 'tài sản', 'mã', 'instrument', 'ticker', 'product', 'item', 'currency', 'market', 'contract'],
+    side: ['side', 'action', 'direction', 'type', 'lệnh', 'chiều', 'mua/bán', 'buy/sell', 'b/s', 'trade type', 'order type', 'transaction type', 'bs'],
+    size: ['size', 'volume', 'vol', 'quantity', 'qty', 'khối lượng', 'kl', 'lots', 'lot', 'amount', 'units'],
+    entry_price: ['entry_price', 'entry', 'entry price', 'giá vào', 'gia vào', 'giá entry', 'giá mua', 'giá bán', 'open price', 'open_price', 'openprice', 'open rate', 'entry rate', 'fill price'],
+    exit_price: ['exit_price', 'exit', 'exit price', 'giá ra', 'gia ra', 'giá exit', 'giá đóng', 'close price', 'close_price', 'closeprice', 'close rate', 'exit rate', 'closing price'],
+    pnl: ['pnl', 'profit', 'loss', 'profit/loss', 'lợi nhuận', 'loi nhuan', 'kết quả', 'p&l', 'realized_pnl', 'net profit', 'realized pnl', 'net pnl', 'total profit', 'net_profit', 'closed pnl'],
+    trade_time: ['trade_time', 'time', 'date', 'datetime', 'timestamp', 'thời gian', 'ngày', 'ngay', 'date_time', 'open datetime', 'open_datetime', 'open time', 'open_time', 'opened', 'created time', 'create time', 'open date'],
+    exit_time: ['exit_time', 'exit time', 'close time', 'close datetime', 'close_time', 'close_datetime', 'thời gian ra', 'thời gian thoát', 'thoát lệnh', 'ngày đóng', 'ngay dong', 'closed', 'close date', 'done time'],
+    stop_loss: ['stop_loss', 'stop loss', 'sl', 'cắt lỗ', 'cat lo', 's / l', 's/l', 'stoploss'],
+    take_profit: ['take_profit', 'take profit', 'tp', 'chốt lời', 'chot loi', 't / p', 't/p', 'takeprofit'],
+    user_notes: ['user_notes', 'notes', 'comment', 'ghi chú', 'ghi chu', 'mô tả', 'description', 'remarks'],
+    trade_type: ['trade_type', 'trade type', 'loại', 'loai', 'account', 'account type']
+  };
+
+  const partialKeywords = {
+    take_profit: ['take profit', 'tp', 't / p', 't/p'],
+    stop_loss: ['stop loss', 'sl', 's / l', 's/l'],
+    entry_price: ['open price', 'entry', 'giá vào', 'open rate', 'fill price'],
+    exit_price: ['close price', 'exit', 'giá ra', 'close rate', 'closing price'],
+    pnl: ['profit', 'pnl', 'loss', 'lợi nhuận', 'net pnl'],
+    trade_time: ['open time', 'datetime', 'time', 'date', 'thời gian', 'opened', 'create time'],
+    exit_time: ['close time', 'exit time', 'close datetime', 'thoát lệnh', 'closed', 'close date'],
+    asset: ['symbol', 'asset', 'pair', 'instrument', 'item'],
+    side: ['side', 'type', 'chiều', 'action', 'buy/sell'],
+    size: ['volume', 'vol', 'size', 'qty', 'lots', 'amount'],
+    user_notes: ['notes', 'comment', 'ghi chú', 'remark']
+  };
+
+  let bestRowIdx = -1;
+  let bestMatchCount = -1;
+  let bestMapping = {};
+
+  for (let r = 0; r < Math.min(rows.length, 15); r++) {
+    const row = rows[r];
+    const mapping = {};
+    let matchCount = 0;
+    const mappedCols = new Set();
+    const priceCols = [];
+
+    for (let c = 0; c < row.length; c++) {
+      const cell = (row[c] || '').trim().toLowerCase();
+      if (cell === 'price' || cell === 'giá') {
+        priceCols.push(c);
+      }
+    }
+
+    for (let c = 0; c < row.length; c++) {
+      const cell = (row[c] || '').trim().toLowerCase();
+      if (!cell) continue;
+
+      for (const [field, keywords] of Object.entries(exactKeywords)) {
+        if (mapping[field] === undefined && keywords.includes(cell)) {
+          mapping[field] = c;
+          mappedCols.add(c);
+          matchCount++;
+          break;
+        }
+      }
+    }
+
+    if (priceCols.length >= 2) {
+      if (mapping.entry_price === undefined) {
+        mapping.entry_price = priceCols[0];
+        mappedCols.add(priceCols[0]);
+        matchCount++;
+      }
+      if (mapping.exit_price === undefined) {
+        mapping.exit_price = priceCols[1];
+        mappedCols.add(priceCols[1]);
+        matchCount++;
+      }
+    } else if (priceCols.length === 1 && mapping.entry_price === undefined) {
+      mapping.entry_price = priceCols[0];
+      mappedCols.add(priceCols[0]);
+      matchCount++;
+    }
+
+    for (let c = 0; c < row.length; c++) {
+      if (mappedCols.has(c)) continue;
+      const cell = (row[c] || '').trim().toLowerCase();
+      if (!cell) continue;
+
+      for (const [field, keywords] of Object.entries(partialKeywords)) {
+        if (mapping[field] === undefined) {
+          const matched = keywords.some(k => cell.includes(k));
+          if (matched) {
+            mapping[field] = c;
+            mappedCols.add(c);
+            matchCount++;
+            break;
+          }
+        }
+      }
+    }
+
+    if (matchCount > bestMatchCount && matchCount >= 2) {
+      bestMatchCount = matchCount;
+      bestRowIdx = r;
+      bestMapping = mapping;
+    }
+  }
+
+  if (bestRowIdx === -1 || bestMatchCount < 2) {
+    for (let r = 0; r < Math.min(rows.length, 10); r++) {
+      const row = rows[r];
+      if (row.length < 3) continue;
+      const mapping = {};
+      let dataScore = 0;
+
+      for (let c = 0; c < row.length; c++) {
+        const val = (row[c] || '').trim();
+        if (!val) continue;
+
+        if (/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(val) || /^\d{2}[-/.]\d{2}[-/.]\d{4}/.test(val)) {
+          if (mapping.trade_time === undefined) {
+            mapping.trade_time = c;
+            dataScore++;
+          } else if (mapping.exit_time === undefined) {
+            mapping.exit_time = c;
+            dataScore++;
+          }
+        }
+        else if (/^(BUY|SELL|BUY_LIMIT|SELL_LIMIT|BUY_STOP|SELL_STOP)$/i.test(val)) {
+          if (mapping.side === undefined) {
+            mapping.side = c;
+            dataScore++;
+          }
+        }
+        else if (/^[A-Z]{3,8}(USD|EUR|GBP|JPY|CAD|AUD|CHF)?$/i.test(val) && val.length <= 10 && !/^(BUY|SELL|WIN|LOSS)$/i.test(val)) {
+          if (mapping.asset === undefined) {
+            mapping.asset = c;
+            dataScore++;
+          }
+        }
+      }
+
+      if (dataScore >= 2) {
+        bestRowIdx = r > 0 ? r - 1 : 0;
+        bestMapping = mapping;
+        break;
+      }
+    }
+  }
+
+  return { headerRowIndex: bestRowIdx, mapping: bestMapping };
+};
+
+const parseRowsToTrades = (rows, headerRowIndex, mapping, sourceTimezoneOffset, globalTargetAccount) => {
+  const trades = [];
+  const startRow = headerRowIndex === -1 ? 0 : headerRowIndex + 1;
+
+  for (let i = startRow; i < rows.length; i++) {
+    const row = rows[i];
+    if (row.length === 0 || (row.length === 1 && !row[0].trim())) continue;
+
+    const getVal = (field) => {
+      const colIdx = mapping[field];
+      if (colIdx === undefined || colIdx >= row.length) return '';
+      return (row[colIdx] || '').trim();
+    };
+
+    const asset = getVal('asset').toUpperCase() || 'XAUUSD';
+    
+    let rawSide = getVal('side').toUpperCase();
+    let side = 'BUY';
+    if (rawSide.startsWith('S') || rawSide.includes('SELL') || rawSide.startsWith('BÁN') || rawSide.includes('BAN')) {
+      side = 'SELL';
+    }
+
+    const size = parseFloat(getVal('size')) || 0.01;
+    const entry_price = parseFloat(getVal('entry_price')) || 0;
+    const exit_price = parseFloat(getVal('exit_price')) || 0;
+    
+    let pnlVal = getVal('pnl');
+    let pnl = 0;
+    if (pnlVal !== '') {
+      pnl = parseFloat(pnlVal.replace(/[^0-9.-]/g, '')) || 0;
+    } else {
+      if (side === 'BUY') {
+        pnl = (exit_price - entry_price) * size;
+      } else {
+        pnl = (entry_price - exit_price) * size;
+      }
+      pnl = Math.round(pnl * 100) / 100;
+    }
+
+    let trade_time = getVal('trade_time') || null;
+    let exit_time = getVal('exit_time') || null;
+
+    if (trade_time && trade_time.length <= 8 && trade_time.includes(':')) {
+      const d = new Date().toISOString().substring(0, 10);
+      trade_time = `${d} ${trade_time}`;
+    }
+
+    if (exit_time && exit_time.length <= 8 && exit_time.includes(':')) {
+      const d = new Date().toISOString().substring(0, 10);
+      exit_time = `${d} ${exit_time}`;
+    }
+
+    const raw_trade_time = trade_time;
+    const raw_exit_time = exit_time;
+
+    trade_time = convertToUtcSql(raw_trade_time, sourceTimezoneOffset);
+    exit_time = convertToUtcSql(raw_exit_time, sourceTimezoneOffset);
+
+    const stop_loss = getVal('stop_loss') ? parseFloat(getVal('stop_loss')) : null;
+    const take_profit = getVal('take_profit') ? parseFloat(getVal('take_profit')) : null;
+    const user_notes = getVal('user_notes') || '';
+    let trade_type = getVal('trade_type') || globalTargetAccount;
+
+    trades.push({
+      asset, side, size, entry_price, exit_price, pnl,
+      stop_loss, take_profit, raw_trade_time, raw_exit_time,
+      trade_time, exit_time, user_notes, trade_type, selected: true
+    });
+  }
+  return trades;
+};
+
+const groupTradesBlock = (symbolGroups, groupedResult) => {
+  symbolGroups.forEach(groupTrades => {
+    if (groupTrades.length === 1) {
+      groupedResult.push(groupTrades[0]);
+    } else {
+      groupTrades.sort((a, b) => getTimeMs(a.trade_time) - getTimeMs(b.trade_time));
+
+      const firstTrade = groupTrades[0];
+      const { asset, side, trade_type } = firstTrade;
+
+      let totalSize = 0, totalPnl = 0, weightedEntrySum = 0, weightedExitSum = 0;
+      const slValues = [], tpValues = [];
+
+      const datePart = firstTrade.trade_time ? firstTrade.trade_time.split(' ')[0] : '';
+      let notesSummary = `[Giao dịch DCA gộp từ ${groupTrades.length} lệnh ngày ${datePart}]\n`;
+
+      groupTrades.forEach((t, idx) => {
+        totalSize += t.size;
+        totalPnl += t.pnl;
+        weightedEntrySum += t.entry_price * t.size;
+        weightedExitSum += (t.exit_price || t.entry_price) * t.size;
+
+        if (t.stop_loss) slValues.push(t.stop_loss);
+        if (t.take_profit) tpValues.push(t.take_profit);
+
+        const timePart = t.trade_time ? t.trade_time.split(' ')[1] : '';
+        notesSummary += `- Lệnh #${idx + 1}: Vol ${t.size} | Entry ${t.entry_price} -> Exit ${t.exit_price} | PnL: ${t.pnl >= 0 ? '+' : ''}${t.pnl} USD${timePart ? ` lúc ${timePart}` : ''}\n`;
+        if (t.user_notes) notesSummary += `  Ghi chú: ${t.user_notes}\n`;
+      });
+
+      const avgEntryPrice = totalSize > 0 ? Math.round((weightedEntrySum / totalSize) * 100000) / 100000 : 0;
+      const avgExitPrice = totalSize > 0 ? Math.round((weightedExitSum / totalSize) * 100000) / 100000 : 0;
+      const avgSl = slValues.length > 0 ? Math.round((slValues.reduce((sum, v) => sum + v, 0) / slValues.length) * 100000) / 100000 : null;
+      const avgTp = tpValues.length > 0 ? Math.round((tpValues.reduce((sum, v) => sum + v, 0) / tpValues.length) * 100000) / 100000 : null;
+
+      const latestExitTrade = [...groupTrades].sort((a, b) => getTimeMs(a.exit_time, a.trade_time) - getTimeMs(b.exit_time, b.trade_time))[groupTrades.length - 1];
+
+      groupedResult.push({
+        asset, side, size: Math.round(totalSize * 1000) / 1000,
+        entry_price: avgEntryPrice, exit_price: avgExitPrice,
+        pnl: Math.round(totalPnl * 100) / 100,
+        stop_loss: avgSl, take_profit: avgTp,
+        raw_trade_time: firstTrade.raw_trade_time,
+        raw_exit_time: latestExitTrade ? latestExitTrade.raw_exit_time : null,
+        trade_time: firstTrade.trade_time,
+        exit_time: latestExitTrade ? latestExitTrade.exit_time : null,
+        user_notes: notesSummary.trim(),
+        trade_type, selected: true, is_grouped: true, grouped_count: groupTrades.length
+      });
+    }
+  });
+};
+
+const groupDCATrades = (tradesList) => {
+  const categories = {};
+  tradesList.forEach(trade => {
+    const key = `${trade.asset}_${trade.side}_${trade.trade_type}`;
+    if (!categories[key]) categories[key] = [];
+    categories[key].push(trade);
+  });
+
+  const groupedResult = [];
+  Object.entries(categories).forEach(([catKey, catTrades]) => {
+    catTrades.sort((a, b) => getTimeMs(a.trade_time) - getTimeMs(b.trade_time));
+    const symbolGroups = [];
+    let currentGroup = null;
+
+    catTrades.forEach(t => {
+      if (!currentGroup) {
+        currentGroup = [t];
+      } else {
+        const tradeOpenTimeMs = getTimeMs(t.trade_time);
+        let latestExitTimeMs = 0;
+        currentGroup.forEach(g => {
+          const exitTimeMs = getTimeMs(g.exit_time, g.trade_time);
+          if (exitTimeMs > latestExitTimeMs) latestExitTimeMs = exitTimeMs;
+        });
+
+        if (tradeOpenTimeMs <= latestExitTimeMs) {
+          currentGroup.push(t);
+        } else {
+          symbolGroups.push(currentGroup);
+          currentGroup = [t];
+        }
+      }
+    });
+
+    if (currentGroup) symbolGroups.push(currentGroup);
+    groupTradesBlock(symbolGroups, groupedResult);
+  });
+
+  groupedResult.sort((a, b) => {
+    if (!a.trade_time) return 1;
+    if (!b.trade_time) return -1;
+    return getTimeMs(a.trade_time) - getTimeMs(b.trade_time);
+  });
+  return groupedResult;
 };
 
 export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTrades = [], accountTabs = [], activeTab }) {
@@ -94,6 +462,8 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
   const [localTzName, setLocalTzName] = useState('Asia/Ho_Chi_Minh');
   const [globalTargetAccount, setGlobalTargetAccount] = useState('LIVE');
   const [isGlobalAccountDropdownOpen, setIsGlobalAccountDropdownOpen] = useState(false);
+  const [filterStartDate, setFilterStartDate] = useState('');
+  const [showAdvancedConfigs, setShowAdvancedConfigs] = useState(false);
 
   useEffect(() => {
     if (activeTab && activeTab !== 'ALL') {
@@ -105,14 +475,36 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
   }, [activeTab, accountTabs]);
 
   useEffect(() => {
+    if (!globalTargetAccount) return;
     try {
-      const saved = localStorage.getItem('ai_trading_csv_source_tz');
-      if (saved !== null && saved !== undefined && !isNaN(parseFloat(saved))) {
-        setSourceTimezoneOffset(parseFloat(saved));
+      const suffix = `_${globalTargetAccount}`;
+      
+      const savedTz = localStorage.getItem(`ai_trading_csv_source_tz${suffix}`);
+      if (savedTz !== null && savedTz !== undefined && !isNaN(parseFloat(savedTz))) {
+        setSourceTimezoneOffset(parseFloat(savedTz));
+      } else {
+        setSourceTimezoneOffset(0);
+      }
+      
+      const savedDate = localStorage.getItem(`ai_trading_csv_filter_start_date${suffix}`);
+      if (savedDate) {
+        setFilterStartDate(savedDate);
+      } else {
+        setFilterStartDate('');
+      }
+
+      const savedDca = localStorage.getItem(`ai_trading_csv_group_dca${suffix}`);
+      if (savedDca !== null && savedDca !== undefined) {
+        setGroupDCA(savedDca === 'true');
+      } else {
+        setGroupDCA(true);
       }
     } catch (e) {
       console.error(e);
     }
+  }, [globalTargetAccount]);
+
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       setLocalOffsetHours(-(new Date().getTimezoneOffset() / 60));
       setLocalTzName(Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Ho_Chi_Minh');
@@ -122,8 +514,8 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
   const handleTimezoneChange = (val) => {
     const num = parseFloat(val);
     setSourceTimezoneOffset(num);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('ai_trading_csv_source_tz', String(num));
+    if (typeof window !== 'undefined' && globalTargetAccount) {
+      localStorage.setItem(`ai_trading_csv_source_tz_${globalTargetAccount}`, String(num));
     }
     if (rawParsedTrades && rawParsedTrades.length > 0) {
       const updatedRaw = rawParsedTrades.map(t => ({
@@ -150,436 +542,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
 
   if (!isOpen) return null;
 
-  // Custom robust CSV Parser to handle commas within quotes
-  const parseCSVText = (text) => {
-    const lines = [];
-    let row = [""];
-    let inQuotes = false;
-    
-    // Auto detect separator (, or ;)
-    const firstLine = text.split('\n')[0] || '';
-    const commas = (firstLine.match(/,/g) || []).length;
-    const semicolons = (firstLine.match(/;/g) || []).length;
-    const separator = commas >= semicolons ? ',' : ';';
 
-    for (let i = 0; i < text.length; i++) {
-      const c = text[i];
-      const next = text[i + 1];
-
-      if (inQuotes) {
-        if (c === '"') {
-          if (next === '"') {
-            row[row.length - 1] += '"';
-            i++; // Skip next quote
-          } else {
-            inQuotes = false;
-          }
-        } else {
-          row[row.length - 1] += c;
-        }
-      } else {
-        if (c === '"') {
-          inQuotes = true;
-        } else if (c === separator) {
-          row.push("");
-        } else if (c === '\r' || c === '\n') {
-          if (c === '\r' && next === '\n') {
-            i++; // Skip \n
-          }
-          lines.push(row);
-          row = [""];
-        } else {
-          row[row.length - 1] += c;
-        }
-      }
-    }
-    if (row.length > 1 || row[0] !== "") {
-      lines.push(row);
-    }
-    return lines;
-  };
-
-  const findHeaderAndMap = (rows) => {
-    const exactKeywords = {
-      asset: ['asset', 'symbol', 'pair', 'cặp tiền', 'tài sản', 'mã', 'instrument', 'ticker', 'product', 'item', 'currency', 'market', 'contract'],
-      side: ['side', 'action', 'direction', 'type', 'lệnh', 'chiều', 'mua/bán', 'buy/sell', 'b/s', 'trade type', 'order type', 'transaction type', 'bs'],
-      size: ['size', 'volume', 'vol', 'quantity', 'qty', 'khối lượng', 'kl', 'lots', 'lot', 'amount', 'units'],
-      entry_price: ['entry_price', 'entry', 'entry price', 'giá vào', 'gia vào', 'giá entry', 'giá mua', 'giá bán', 'open price', 'open_price', 'openprice', 'open rate', 'entry rate', 'fill price'],
-      exit_price: ['exit_price', 'exit', 'exit price', 'giá ra', 'gia ra', 'giá exit', 'giá đóng', 'close price', 'close_price', 'closeprice', 'close rate', 'exit rate', 'closing price'],
-      pnl: ['pnl', 'profit', 'loss', 'profit/loss', 'lợi nhuận', 'loi nhuan', 'kết quả', 'p&l', 'realized_pnl', 'net profit', 'realized pnl', 'net pnl', 'total profit', 'net_profit', 'closed pnl'],
-      trade_time: ['trade_time', 'time', 'date', 'datetime', 'timestamp', 'thời gian', 'ngày', 'ngay', 'date_time', 'open datetime', 'open_datetime', 'open time', 'open_time', 'opened', 'created time', 'create time', 'open date'],
-      exit_time: ['exit_time', 'exit time', 'close time', 'close datetime', 'close_time', 'close_datetime', 'thời gian ra', 'thời gian thoát', 'thoát lệnh', 'ngày đóng', 'ngay dong', 'closed', 'close date', 'done time'],
-      stop_loss: ['stop_loss', 'stop loss', 'sl', 'cắt lỗ', 'cat lo', 's / l', 's/l', 'stoploss'],
-      take_profit: ['take_profit', 'take profit', 'tp', 'chốt lời', 'chot loi', 't / p', 't/p', 'takeprofit'],
-      user_notes: ['user_notes', 'notes', 'comment', 'ghi chú', 'ghi chu', 'mô tả', 'description', 'remarks'],
-      trade_type: ['trade_type', 'trade type', 'loại', 'loai', 'account', 'account type']
-    };
-
-    const partialKeywords = {
-      take_profit: ['take profit', 'tp', 't / p', 't/p'],
-      stop_loss: ['stop loss', 'sl', 's / l', 's/l'],
-      entry_price: ['open price', 'entry', 'giá vào', 'open rate', 'fill price'],
-      exit_price: ['close price', 'exit', 'giá ra', 'close rate', 'closing price'],
-      pnl: ['profit', 'pnl', 'loss', 'lợi nhuận', 'net pnl'],
-      trade_time: ['open time', 'datetime', 'time', 'date', 'thời gian', 'opened', 'create time'],
-      exit_time: ['close time', 'exit time', 'close datetime', 'thoát lệnh', 'closed', 'close date'],
-      asset: ['symbol', 'asset', 'pair', 'instrument', 'item'],
-      side: ['side', 'type', 'chiều', 'action', 'buy/sell'],
-      size: ['volume', 'vol', 'size', 'qty', 'lots', 'amount'],
-      user_notes: ['notes', 'comment', 'ghi chú', 'remark']
-    };
-
-    let bestRowIdx = -1;
-    let bestMatchCount = -1;
-    let bestMapping = {};
-
-    for (let r = 0; r < Math.min(rows.length, 15); r++) {
-      const row = rows[r];
-      const mapping = {};
-      let matchCount = 0;
-      const mappedCols = new Set();
-      const priceCols = [];
-
-      // Track columns named simply "price" (common in MT4/MT5 where col 1 = open price, col 2 = close price)
-      for (let c = 0; c < row.length; c++) {
-        const cell = (row[c] || '').trim().toLowerCase();
-        if (cell === 'price' || cell === 'giá') {
-          priceCols.push(c);
-        }
-      }
-
-      // Pass 1: Exact matches (highest priority)
-      for (let c = 0; c < row.length; c++) {
-        const cell = (row[c] || '').trim().toLowerCase();
-        if (!cell) continue;
-
-        for (const [field, keywords] of Object.entries(exactKeywords)) {
-          if (mapping[field] === undefined && keywords.includes(cell)) {
-            mapping[field] = c;
-            mappedCols.add(c);
-            matchCount++;
-            break;
-          }
-        }
-      }
-
-      // Pass 2: Handle MT4/MT5 dual "Price" columns if unmapped
-      if (priceCols.length >= 2) {
-        if (mapping.entry_price === undefined) {
-          mapping.entry_price = priceCols[0];
-          mappedCols.add(priceCols[0]);
-          matchCount++;
-        }
-        if (mapping.exit_price === undefined) {
-          mapping.exit_price = priceCols[1];
-          mappedCols.add(priceCols[1]);
-          matchCount++;
-        }
-      } else if (priceCols.length === 1 && mapping.entry_price === undefined) {
-        mapping.entry_price = priceCols[0];
-        mappedCols.add(priceCols[0]);
-        matchCount++;
-      }
-
-      // Pass 3: Partial matches for unmapped columns
-      for (let c = 0; c < row.length; c++) {
-        if (mappedCols.has(c)) continue;
-        const cell = (row[c] || '').trim().toLowerCase();
-        if (!cell) continue;
-
-        for (const [field, keywords] of Object.entries(partialKeywords)) {
-          if (mapping[field] === undefined) {
-            const matched = keywords.some(k => cell.includes(k));
-            if (matched) {
-              mapping[field] = c;
-              mappedCols.add(c);
-              matchCount++;
-              break;
-            }
-          }
-        }
-      }
-
-      if (matchCount > bestMatchCount && matchCount >= 2) {
-        bestMatchCount = matchCount;
-        bestRowIdx = r;
-        bestMapping = mapping;
-      }
-    }
-
-    // Pass 4: Fallback heuristic data scanning if row headers were non-standard
-    if (bestRowIdx === -1 || bestMatchCount < 2) {
-      for (let r = 0; r < Math.min(rows.length, 10); r++) {
-        const row = rows[r];
-        if (row.length < 3) continue;
-        const mapping = {};
-        let dataScore = 0;
-
-        for (let c = 0; c < row.length; c++) {
-          const val = (row[c] || '').trim();
-          if (!val) continue;
-
-          // Date Time pattern
-          if (/^\d{4}[-/.]\d{1,2}[-/.]\d{1,2}/.test(val) || /^\d{2}[-/.]\d{2}[-/.]\d{4}/.test(val)) {
-            if (mapping.trade_time === undefined) {
-              mapping.trade_time = c;
-              dataScore++;
-            } else if (mapping.exit_time === undefined) {
-              mapping.exit_time = c;
-              dataScore++;
-            }
-          }
-          // BUY / SELL pattern
-          else if (/^(BUY|SELL|BUY_LIMIT|SELL_LIMIT|BUY_STOP|SELL_STOP)$/i.test(val)) {
-            if (mapping.side === undefined) {
-              mapping.side = c;
-              dataScore++;
-            }
-          }
-          // Asset symbol pattern
-          else if (/^[A-Z]{3,8}(USD|EUR|GBP|JPY|CAD|AUD|CHF)?$/i.test(val) && val.length <= 10 && !/^(BUY|SELL|WIN|LOSS)$/i.test(val)) {
-            if (mapping.asset === undefined) {
-              mapping.asset = c;
-              dataScore++;
-            }
-          }
-        }
-
-        if (dataScore >= 2) {
-          bestRowIdx = r > 0 ? r - 1 : 0;
-          bestMapping = mapping;
-          break;
-        }
-      }
-    }
-
-    return { headerRowIndex: bestRowIdx, mapping: bestMapping };
-  };
-
-  const parseRowsToTrades = (rows, headerRowIndex, mapping) => {
-    const trades = [];
-    const startRow = headerRowIndex === -1 ? 0 : headerRowIndex + 1;
-
-    for (let i = startRow; i < rows.length; i++) {
-      const row = rows[i];
-      if (row.length === 0 || (row.length === 1 && !row[0].trim())) continue;
-
-      const getVal = (field) => {
-        const colIdx = mapping[field];
-        if (colIdx === undefined || colIdx >= row.length) return '';
-        return (row[colIdx] || '').trim();
-      };
-
-      const asset = getVal('asset').toUpperCase() || 'XAUUSD';
-      
-      let rawSide = getVal('side').toUpperCase();
-      let side = 'BUY';
-      if (rawSide.startsWith('S') || rawSide.includes('SELL') || rawSide.startsWith('BÁN') || rawSide.includes('BAN')) {
-        side = 'SELL';
-      }
-
-      const size = parseFloat(getVal('size')) || 0.01;
-      const entry_price = parseFloat(getVal('entry_price')) || 0;
-      const exit_price = parseFloat(getVal('exit_price')) || 0;
-      
-      let pnlVal = getVal('pnl');
-      let pnl = 0;
-      if (pnlVal !== '') {
-        pnl = parseFloat(pnlVal.replace(/[^0-9.-]/g, '')) || 0;
-      } else {
-        if (side === 'BUY') {
-          pnl = (exit_price - entry_price) * size;
-        } else {
-          pnl = (entry_price - exit_price) * size;
-        }
-        pnl = Math.round(pnl * 100) / 100;
-      }
-
-      let trade_time = getVal('trade_time') || null;
-      let exit_time = getVal('exit_time') || null;
-
-      if (trade_time && trade_time.length <= 8 && trade_time.includes(':')) {
-        const d = new Date().toISOString().substring(0, 10);
-        trade_time = `${d} ${trade_time}`;
-      }
-
-      if (exit_time && exit_time.length <= 8 && exit_time.includes(':')) {
-        const d = new Date().toISOString().substring(0, 10);
-        exit_time = `${d} ${exit_time}`;
-      }
-
-      const raw_trade_time = trade_time;
-      const raw_exit_time = exit_time;
-
-      // Standardize to YYYY-MM-DD HH:mm:ss SQL format in UTC
-      trade_time = convertToUtcSql(raw_trade_time, sourceTimezoneOffset);
-      exit_time = convertToUtcSql(raw_exit_time, sourceTimezoneOffset);
-
-      const stop_loss = getVal('stop_loss') ? parseFloat(getVal('stop_loss')) : null;
-      const take_profit = getVal('take_profit') ? parseFloat(getVal('take_profit')) : null;
-      const user_notes = getVal('user_notes') || '';
-      let trade_type = getVal('trade_type') || globalTargetAccount;
-
-      trades.push({
-        asset,
-        side,
-        size,
-        entry_price,
-        exit_price,
-        pnl,
-        stop_loss,
-        take_profit,
-        raw_trade_time,
-        raw_exit_time,
-        trade_time,
-        exit_time,
-        user_notes,
-        trade_type,
-        selected: true
-      });
-    }
-
-    return trades;
-  };
-
-  const groupDCATrades = (tradesList) => {
-    const getTimeMs = (timeStr, fallbackTimeStr) => {
-      if (!timeStr) {
-        if (fallbackTimeStr) return getTimeMs(fallbackTimeStr);
-        return 0;
-      }
-      const d = safeParseDate(timeStr);
-      return d && !isNaN(d.getTime()) ? d.getTime() : 0;
-    };
-
-    const getLatestExitTime = (group) => {
-      let latest = 0;
-      group.forEach(t => {
-        const exitTimeMs = getTimeMs(t.exit_time, t.trade_time);
-        if (exitTimeMs > latest) {
-          latest = exitTimeMs;
-        }
-      });
-      return latest;
-    };
-
-    const categories = {};
-    tradesList.forEach(trade => {
-      const key = `${trade.asset}_${trade.side}_${trade.trade_type}`;
-      if (!categories[key]) {
-        categories[key] = [];
-      }
-      categories[key].push(trade);
-    });
-
-    const groupedResult = [];
-
-    Object.entries(categories).forEach(([catKey, catTrades]) => {
-      catTrades.sort((a, b) => getTimeMs(a.trade_time) - getTimeMs(b.trade_time));
-
-      const symbolGroups = [];
-      let currentGroup = null;
-
-      catTrades.forEach(t => {
-        if (!currentGroup) {
-          currentGroup = [t];
-        } else {
-          const tradeOpenTimeMs = getTimeMs(t.trade_time);
-          const latestExitTimeMs = getLatestExitTime(currentGroup);
-
-          if (tradeOpenTimeMs <= latestExitTimeMs) {
-            currentGroup.push(t);
-          } else {
-            symbolGroups.push(currentGroup);
-            currentGroup = [t];
-          }
-        }
-      });
-
-      if (currentGroup) {
-        symbolGroups.push(currentGroup);
-      }
-
-      groupTradesBlock(symbolGroups, groupedResult, getTimeMs);
-    });
-
-    groupedResult.sort((a, b) => {
-      if (!a.trade_time) return 1;
-      if (!b.trade_time) return -1;
-      return getTimeMs(a.trade_time) - getTimeMs(b.trade_time);
-    });
-    return groupedResult;
-  };
-
-  const groupTradesBlock = (symbolGroups, groupedResult, getTimeMs) => {
-    symbolGroups.forEach(groupTrades => {
-      if (groupTrades.length === 1) {
-        groupedResult.push(groupTrades[0]);
-      } else {
-        groupTrades.sort((a, b) => getTimeMs(a.trade_time) - getTimeMs(b.trade_time));
-
-        const firstTrade = groupTrades[0];
-        const asset = firstTrade.asset;
-        const side = firstTrade.side;
-        const trade_type = firstTrade.trade_type;
-
-        let totalSize = 0;
-        let totalPnl = 0;
-        let weightedEntrySum = 0;
-        let weightedExitSum = 0;
-
-        const slValues = [];
-        const tpValues = [];
-
-        const datePart = firstTrade.trade_time ? firstTrade.trade_time.split(' ')[0] : '';
-        let notesSummary = `[Giao dịch DCA gộp từ ${groupTrades.length} lệnh ngày ${datePart}]\n`;
-
-        groupTrades.forEach((t, idx) => {
-          totalSize += t.size;
-          totalPnl += t.pnl;
-          weightedEntrySum += t.entry_price * t.size;
-          weightedExitSum += (t.exit_price || t.entry_price) * t.size;
-
-          if (t.stop_loss) slValues.push(t.stop_loss);
-          if (t.take_profit) tpValues.push(t.take_profit);
-
-          const timePart = t.trade_time ? t.trade_time.split(' ')[1] : '';
-          notesSummary += `- Lệnh #${idx + 1}: Vol ${t.size} | Entry ${t.entry_price} -> Exit ${t.exit_price} | PnL: ${t.pnl >= 0 ? '+' : ''}${t.pnl} USD${timePart ? ` lúc ${timePart}` : ''}\n`;
-          if (t.user_notes) {
-            notesSummary += `  Ghi chú: ${t.user_notes}\n`;
-          }
-        });
-
-        const avgEntryPrice = totalSize > 0 ? Math.round((weightedEntrySum / totalSize) * 100000) / 100000 : 0;
-        const avgExitPrice = totalSize > 0 ? Math.round((weightedExitSum / totalSize) * 100000) / 100000 : 0;
-
-        const avgSl = slValues.length > 0 ? Math.round((slValues.reduce((sum, v) => sum + v, 0) / slValues.length) * 100000) / 100000 : null;
-        const avgTp = tpValues.length > 0 ? Math.round((tpValues.reduce((sum, v) => sum + v, 0) / tpValues.length) * 100000) / 100000 : null;
-
-        const latestExitTrade = [...groupTrades].sort((a, b) => getTimeMs(a.exit_time, a.trade_time) - getTimeMs(b.exit_time, b.trade_time))[groupTrades.length - 1];
-
-        groupedResult.push({
-          asset,
-          side,
-          size: Math.round(totalSize * 1000) / 1000,
-          entry_price: avgEntryPrice,
-          exit_price: avgExitPrice,
-          pnl: Math.round(totalPnl * 100) / 100,
-          stop_loss: avgSl,
-          take_profit: avgTp,
-          raw_trade_time: firstTrade.raw_trade_time,
-          raw_exit_time: latestExitTrade ? latestExitTrade.raw_exit_time : null,
-          trade_time: firstTrade.trade_time,
-          exit_time: latestExitTrade ? latestExitTrade.exit_time : null,
-          user_notes: notesSummary.trim(),
-          trade_type,
-          selected: true,
-          is_grouped: true,
-          grouped_count: groupTrades.length
-        });
-      }
-    });
-  };
 
   const checkDuplicates = (tradesList) => {
     return tradesList.map(trade => {
@@ -610,10 +573,22 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
       }
 
       const { headerRowIndex, mapping } = findHeaderAndMap(rows);
-      const tradesList = parseRowsToTrades(rows, headerRowIndex, mapping);
+      let tradesList = parseRowsToTrades(rows, headerRowIndex, mapping, sourceTimezoneOffset, globalTargetAccount);
+
+      if (filterStartDate) {
+        const filterD = new Date(filterStartDate + 'T00:00:00Z');
+        if (!isNaN(filterD.getTime())) {
+          tradesList = tradesList.filter(t => {
+            if (!t.raw_trade_time) return true;
+            const tradeD = safeParseDate(t.raw_trade_time);
+            if (!tradeD || isNaN(tradeD.getTime())) return true;
+            return tradeD.getTime() >= filterD.getTime();
+          });
+        }
+      }
 
       if (tradesList.length === 0) {
-        setError('File CSV không đúng định dạng báo cáo giao dịch (Thiếu các cột bắt buộc: Symbol/Cặp tiền, Giá vào, Khối lượng). Vui lòng chọn đúng file CSV từ MT4/MT5/E8/Broker.');
+        setError('Không có lệnh nào hợp lệ (hoặc không có lệnh nào sau ngày lọc). Vui lòng kiểm tra lại định dạng file CSV hoặc ngày lọc.');
         return;
       }
 
@@ -630,41 +605,32 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
     }
   };
 
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0];
+  const processFile = (selectedFile) => {
     if (selectedFile) {
+      if (!selectedFile.name.endsWith('.csv')) {
+        setError('Chỉ chấp nhận file định dạng .csv');
+        return;
+      }
       setFile(selectedFile);
       const reader = new FileReader();
-      reader.onload = (event) => {
-        processCSVContent(event.target.result);
-      };
+      reader.onload = (event) => processCSVContent(event.target.result);
       reader.readAsText(selectedFile);
     }
   };
+
+  const handleFileChange = (e) => processFile(e.target.files[0]);
 
   const handleDragOver = (e) => {
     e.preventDefault();
     setDragOver(true);
   };
 
-  const handleDragLeave = () => {
-    setDragOver(false);
-  };
+  const handleDragLeave = () => setDragOver(false);
 
   const handleDrop = (e) => {
     e.preventDefault();
     setDragOver(false);
-    const droppedFile = e.dataTransfer.files[0];
-    if (droppedFile && droppedFile.name.endsWith('.csv')) {
-      setFile(droppedFile);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        processCSVContent(event.target.result);
-      };
-      reader.readAsText(droppedFile);
-    } else {
-      setError('Chỉ chấp nhận file định dạng .csv');
-    }
+    processFile(e.dataTransfer.files[0]);
   };
 
   const triggerFileSelect = () => {
@@ -674,6 +640,9 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
   const handleDCAToggle = () => {
     const nextGroupDCA = !groupDCA;
     setGroupDCA(nextGroupDCA);
+    if (typeof window !== 'undefined' && globalTargetAccount) {
+      localStorage.setItem(`ai_trading_csv_group_dca_${globalTargetAccount}`, String(nextGroupDCA));
+    }
     if (rawParsedTrades.length > 0) {
       const updated = nextGroupDCA ? groupDCATrades(rawParsedTrades) : rawParsedTrades;
       setParsedTrades(checkDuplicates(updated));
@@ -942,62 +911,98 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
                   </div>
                 )}
                 
-                {/* Timezone Selection Option */}
-                <div className="theme-inner-card p-4 rounded-xl space-y-2.5 col-span-1 md:col-span-2 border theme-border">
-                  <label className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-amber-400" /> {t('csvTimezoneHeader')}
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <span className="text-[11px] text-slate-400 block mb-1 font-medium">{t('csvSourceTzLabel')}</span>
-                      <select
-                        value={sourceTimezoneOffset}
-                        onChange={(e) => handleTimezoneChange(parseFloat(e.target.value))}
-                        className="w-full theme-inner-card border theme-border rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer font-semibold focus:border-sky-500"
-                      >
-                        <option value={0}>{t('tzOpt0')}</option>
-                        <option value={7}>{t('tzOpt7')}</option>
-                        <option value={3}>{t('tzOpt3')}</option>
-                        <option value={2}>{t('tzOpt2')}</option>
-                        <option value={8}>{t('tzOpt8')}</option>
-                        <option value={1}>{t('tzOpt1')}</option>
-                        <option value={-5}>{t('tzOptNeg5')}</option>
-                        <option value={-4}>{t('tzOptNeg4')}</option>
-                        <option value={-7}>{t('tzOptNeg7')}</option>
-                      </select>
-                    </div>
-                    <div>
-                      <span className="text-[11px] text-slate-400 block mb-1 font-medium">{t('csvTargetTzLabel')}</span>
-                      <div className="text-[11px] text-slate-300 theme-card border theme-border rounded-xl px-3 py-2 flex flex-col justify-center h-[38px]">
-                        <span className="font-semibold text-emerald-400 flex items-center justify-between">
-                          <span>{t('csvUtcStandard')}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">{t('csvLocalTzAutoFormat')}</span>
-                        </span>
+                {/* Advanced Settings Toggle */}
+                <div className="col-span-1 md:col-span-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowAdvancedConfigs(!showAdvancedConfigs)}
+                    className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-slate-400 hover:text-white theme-inner-card border theme-border rounded-xl py-3 transition cursor-pointer outline-none focus:outline-none focus:ring-0"
+                  >
+                    {showAdvancedConfigs ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    Cài đặt nâng cao (Lưu tự động theo tài khoản)
+                  </button>
+                </div>
+                
+                {showAdvancedConfigs && (
+                  <>
+                    {/* Timezone Selection Option */}
+                    <div className="theme-inner-card p-4 rounded-xl space-y-2.5 col-span-1 md:col-span-2 border theme-border animate-fade-in">
+                      <label className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <Clock className="w-4 h-4 text-amber-400" /> {t('csvTimezoneHeader')}
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <span className="text-[11px] text-slate-400 block mb-1 font-medium">{t('csvSourceTzLabel')}</span>
+                          <select
+                            value={sourceTimezoneOffset}
+                            onChange={(e) => handleTimezoneChange(parseFloat(e.target.value))}
+                            className="w-full theme-inner-card border theme-border rounded-xl px-3 py-2 text-xs text-white outline-none cursor-pointer font-semibold focus:border-sky-500"
+                          >
+                            <option value={0}>{t('tzOpt0')}</option>
+                            <option value={7}>{t('tzOpt7')}</option>
+                            <option value={3}>{t('tzOpt3')}</option>
+                            <option value={2}>{t('tzOpt2')}</option>
+                            <option value={8}>{t('tzOpt8')}</option>
+                            <option value={1}>{t('tzOpt1')}</option>
+                            <option value={-5}>{t('tzOptNeg5')}</option>
+                            <option value={-4}>{t('tzOptNeg4')}</option>
+                            <option value={-7}>{t('tzOptNeg7')}</option>
+                          </select>
+                        </div>
+                        <div>
+                          <span className="text-[11px] text-slate-400 block mb-1 font-medium">{t('csvTargetTzLabel')}</span>
+                          <div className="text-[11px] text-slate-300 theme-card border theme-border rounded-xl px-3 py-2 flex flex-col justify-center h-[38px]">
+                            <span className="font-semibold text-emerald-400 flex items-center justify-between">
+                              <span>{t('csvUtcStandard')}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">{t('csvLocalTzAutoFormat')}</span>
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
 
-                {/* DCA Option */}
-                <div className="theme-inner-card p-4 rounded-xl flex items-start gap-3.5 col-span-1 md:col-span-2">
-                  <div className="pt-0.5">
-                    <input 
-                      type="checkbox"
-                      id="groupDCA"
-                      checked={groupDCA}
-                      onChange={handleDCAToggle}
-                      className="w-4 h-4 rounded theme-border theme-card text-sky-500 focus:ring-sky-500 cursor-pointer"
-                    />
-                  </div>
-                  <label htmlFor="groupDCA" className="space-y-1 cursor-pointer">
-                    <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5 text-sky-400" /> {t('csvGroupDcaTitle')}
-                    </span>
-                    <p className="text-xs text-slate-500 leading-relaxed">
-                      {t('csvGroupDcaDesc')}
-                    </p>
-                  </label>
-                </div>
+                    {/* Filter Date Option */}
+                    <div className="theme-inner-card p-4 rounded-xl flex flex-col gap-2 col-span-1 md:col-span-2 border theme-border animate-fade-in">
+                      <label className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <Calendar className="w-4 h-4 text-purple-400" /> Nhập từ ngày (Tùy chọn)
+                      </label>
+                      <p className="text-[11px] text-slate-400">Chỉ nhập các lệnh từ ngày này đến hiện tại. Bỏ trống để nhập tất cả. Hữu ích khi file lịch sử CSV quá dài.</p>
+                      <input
+                        type="date"
+                        value={filterStartDate}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFilterStartDate(val);
+                          if (typeof window !== 'undefined' && globalTargetAccount) {
+                            localStorage.setItem(`ai_trading_csv_filter_start_date_${globalTargetAccount}`, val);
+                          }
+                        }}
+                        className="w-full sm:w-1/3 theme-inner-card border theme-border focus:border-sky-500 rounded-xl px-3 py-2 text-sm text-white outline-none cursor-pointer"
+                      />
+                    </div>
+
+                    {/* DCA Option */}
+                    <div className="theme-inner-card p-4 rounded-xl flex items-start gap-3.5 col-span-1 md:col-span-2 animate-fade-in">
+                      <div className="pt-0.5">
+                        <input 
+                          type="checkbox"
+                          id="groupDCA"
+                          checked={groupDCA}
+                          onChange={handleDCAToggle}
+                          className="w-4 h-4 rounded theme-border theme-card text-sky-500 focus:ring-sky-500 cursor-pointer"
+                        />
+                      </div>
+                      <label htmlFor="groupDCA" className="space-y-1 cursor-pointer">
+                        <span className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                          <Layers className="w-3.5 h-3.5 text-sky-400" /> {t('csvGroupDcaTitle')}
+                        </span>
+                        <p className="text-xs text-slate-500 leading-relaxed">
+                          {t('csvGroupDcaDesc')}
+                        </p>
+                      </label>
+                    </div>
+                  </>
+                )}
 
               </div>
 
@@ -1387,7 +1392,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
                 setFile(null);
                 setError('');
               }}
-              className="px-5 py-2 rounded-xl text-sm font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              className="px-5 py-2 rounded-xl text-sm font-semibold text-slate-400 hover:text-white theme-inner-card border theme-border hover:bg-slate-800 transition cursor-pointer outline-none focus:outline-none focus:ring-0"
             >
               {t('csvBtnBack')}
             </button>
@@ -1398,7 +1403,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="px-5 py-2 rounded-xl text-sm font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+              className="px-5 py-2 rounded-xl text-sm font-semibold text-slate-400 hover:text-white theme-inner-card border theme-border hover:bg-slate-800 transition cursor-pointer outline-none focus:outline-none focus:ring-0"
             >
               {t('cancel')}
             </button>
@@ -1468,7 +1473,7 @@ export default function ImportCSVModal({ isOpen, onClose, onSuccess, existingTra
             <div className="px-6 py-4 border-t theme-border theme-inner-card flex justify-end gap-3">
               <button
                 onClick={() => setActiveNotesEditIdx(null)}
-                className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                className="px-4 py-2 rounded-xl text-sm font-semibold text-slate-400 hover:text-white theme-inner-card border theme-border hover:bg-slate-800 transition cursor-pointer outline-none focus:outline-none focus:ring-0"
               >
                 {t('cancel')}
               </button>

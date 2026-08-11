@@ -34,7 +34,8 @@ import {
   Trees,
   BarChart2,
   Target,
-  BrainCircuit
+  BrainCircuit,
+  Activity
 } from 'lucide-react';
 import TradeForm from '@/components/TradeForm';
 import SetupStats from '@/components/SetupStats';
@@ -47,6 +48,7 @@ import TradingRules from '@/components/TradingRules';
 import WhatIfSimulator from '@/components/WhatIfSimulator';
 import TradingViewChart from '@/components/TradingViewChart';
 import TradingViewStudioModal from '@/components/TradingViewStudioModal';
+import QuickReviewModal from '@/components/QuickReviewModal';
 import HiddenChartGenerator from '@/components/HiddenChartGenerator';
 import GlobalErrorHandler from '@/components/GlobalErrorHandler';
 import LanguageSelector from '@/components/LanguageSelector';
@@ -146,6 +148,10 @@ function DashboardContent() {
       setIsAccountTabsLoaded(true);
     }
   };
+
+  // Quick Review state
+  const [isQuickReviewOpen, setIsQuickReviewOpen] = useState(false);
+  const [tradesToReview, setTradesToReview] = useState([]);
 
   useEffect(() => {
     loadAccountTabs();
@@ -470,8 +476,8 @@ function DashboardContent() {
       latestFetchRef.current = fetchId;
       setLoading(true);
       const [tradesRes, statsRes] = await Promise.all([
-        fetch(`/api/trades?type=${tab}`),
-        fetch(`/api/stats?type=${tab}`)
+        fetch(`/api/trades?type=${tab}&_t=${fetchId}`),
+        fetch(`/api/stats?type=${tab}&_t=${fetchId}`)
       ]);
 
       if (latestFetchRef.current !== fetchId) return;
@@ -684,7 +690,7 @@ function DashboardContent() {
     setCarouselImageIndex(0);
   }, [carouselIndex]);
 
-  const handleTradeAdded = (newTrade) => {
+  const handleTradeAdded = (newTrade, isNew = false, forceOpenReview = false) => {
     if (editingTrade) {
       setTrades(prev => prev.map(t => t.id === newTrade.id ? newTrade : t));
       setEditingTrade(null);
@@ -692,6 +698,12 @@ function DashboardContent() {
       setTrades(prev => [newTrade, ...prev]);
     }
     fetchDashboardData(activeTab);
+
+    // Automatically open Quick Review if forced or if it's a newly created trade
+    if ((forceOpenReview || isNew) && newTrade) {
+      setTradesToReview([newTrade]);
+      setIsQuickReviewOpen(true);
+    }
   };
 
   const handleResetHistory = async () => {
@@ -2154,6 +2166,24 @@ function DashboardContent() {
                           >
                             <Layers className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" /> {t('quickView')}
                           </button>
+                          <button
+                            onClick={() => {
+                              const unreviewed = trades.filter(t => !t.setup_tag || t.setup_tag === 'Unclassified' || !t.user_notes);
+                              if (unreviewed.length > 0) {
+                                setTradesToReview(unreviewed);
+                                setIsQuickReviewOpen(true);
+                              } else {
+                                alert('Tất cả lệnh đã được review đầy đủ!');
+                              }
+                            }}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                              theme === 'light'
+                                ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                : 'bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20'
+                            }`}
+                          >
+                            <Activity className="w-3.5 h-3.5" /> Duyệt nhanh ({trades.filter(t => !t.setup_tag || t.setup_tag === 'Unclassified' || !t.user_notes).length})
+                          </button>
                         </>
                       )}
                       <span className={`text-xs font-mono px-2.5 py-1 rounded-lg border ${themeStyles.innerCard} ${themeStyles.titleText}`}>
@@ -2413,54 +2443,30 @@ function DashboardContent() {
                                 );
                               })()}
 
-                              {/* AI Coaching Feedbacks */}
-                              {ai && (
-                                <div className={`space-y-3 border-t ${themeStyles.border} pt-3`}>
-                                  
-                                  {/* AI Title */}
-                                  <div className="flex items-center gap-1.5 text-emerald-500 dark:text-emerald-400 font-bold text-[10px] uppercase">
-                                    <Sparkles className="w-3.5 h-3.5" /> {t('aiCoachTitle')}
-                                  </div>
-
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {/* Strengths */}
-                                    <div className="space-y-1.5 bg-emerald-500/5 p-2.5 rounded-lg border border-emerald-500/10">
-                                      <span className="text-emerald-600 dark:text-emerald-400 font-semibold block text-[10px] uppercase tracking-wider">{t('strengthsLabel')}</span>
-                                      {ai.strengths?.length > 0 ? (
-                                        <ul className={`space-y-1 list-disc list-inside ${themeStyles.titleText}`}>
-                                          {ai.strengths.map((str, i) => (
-                                            <li key={i} className="text-xs leading-relaxed">{str}</li>
-                                          ))}
-                                        </ul>
-                                      ) : (
-                                        <span className={`italic text-[11px] ${themeStyles.subtext}`}>-</span>
-                                      )}
+                                  {/* AI Coaching Feedbacks */}
+                                  {ai && (
+                                    <div className={`space-y-3 border-t ${themeStyles.border} pt-3`}>
+                                      <div className={`p-4 rounded-xl border ${themeStyles.innerCard} relative overflow-hidden group`}>
+                                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent pointer-events-none" />
+                                        <div className="relative z-10 text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
+                                          {ai.coach_message ? (
+                                            ai.coach_message
+                                          ) : (
+                                            <>
+                                              <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide">🧠 COACH</span>
+                                              {(ai.strengths || []).map((s, i) => <span key={`s-${i}`} className="block mb-1.5"><span className="text-emerald-500 mr-1">✓</span>{s}</span>)}
+                                              {(ai.weaknesses || []).map((w, i) => <span key={`w-${i}`} className="block mb-1.5"><span className="text-rose-500 mr-1">✗</span>{w}</span>)}
+                                              {ai.advice && <span className="block mt-2 pt-2 border-t border-slate-200 dark:border-white/5 italic text-slate-600 dark:text-slate-400">{ai.advice}</span>}
+                                            </>
+                                          )}
+                                        </div>
+                                        <div className="relative z-10 mt-3 pt-3 border-t border-slate-200/50 dark:border-white/5 flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-wider font-bold">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600"></span>
+                                          AI review based on trade data
+                                        </div>
+                                      </div>
                                     </div>
-
-                                    {/* Weaknesses */}
-                                    <div className="space-y-1.5 bg-rose-500/5 p-2.5 rounded-lg border border-rose-500/10">
-                                      <span className="text-rose-600 dark:text-rose-400 font-semibold block text-[10px] uppercase tracking-wider">{t('weaknessesLabel')}</span>
-                                      {ai.weaknesses?.length > 0 ? (
-                                        <ul className={`space-y-1 list-disc list-inside ${themeStyles.titleText}`}>
-                                          {ai.weaknesses.map((weak, i) => (
-                                            <li key={i} className="text-xs leading-relaxed">{weak}</li>
-                                          ))}
-                                        </ul>
-                                      ) : (
-                                        <span className={`italic text-[11px] ${themeStyles.subtext}`}>-</span>
-                                      )}
-                                    </div>
-                                  </div>
-
-                                  {/* AI Advice */}
-                                  <div className={`p-2.5 rounded-lg border space-y-1 ${themeStyles.innerCard}`}>
-                                    <span className={`font-bold block text-[10px] uppercase tracking-wider ${themeStyles.subtext}`}>{t('coachAdvice')}</span>
-                                    <p className={`leading-relaxed text-xs italic ${themeStyles.titleText}`}>
-                                      {ai.advice}
-                                    </p>
-                                  </div>
-                                </div>
-                              )}
+                                  )}
 
                               {/* Footer Timestamp & Actions */}
                               <div className="flex justify-between items-center text-[10px] text-slate-500 pt-2 border-t border-slate-800/40 mt-1 font-mono">
@@ -3808,7 +3814,31 @@ function DashboardContent() {
           </div>
         </div>
       )}
-
+      
+      {/* Quick Review Modal */}
+      <QuickReviewModal 
+        isOpen={isQuickReviewOpen}
+        onClose={() => setIsQuickReviewOpen(false)}
+        trades={tradesToReview}
+        theme={theme}
+        zIndex={isFormOpen ? 40 : 100}
+        onSaveTrade={async (payload) => {
+          const res = await fetch('/api/trades', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) throw new Error('Failed to update trade');
+          await fetchDashboardData();
+        }}
+        onBackToStep1={(trade) => {
+          setEditingTrade(trade);
+          setIsFormOpen(true);
+          setTimeout(() => {
+            setIsQuickReviewOpen(false);
+          }, 300);
+        }}
+      />
     </main>
   );
 }

@@ -14,12 +14,14 @@ import {
   Layers,
   BookOpen,
   Plus,
+  Activity,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight
 } from 'lucide-react';
 import { useLanguage } from '@/lib/i18n/LanguageContext';
+import QuickReviewModal from './QuickReviewModal';
 
 // Helper to reliably format any DB date string to exact Vietnam Time (UTC+7 / Asia/Ho_Chi_Minh)
 const formatVietnamDateTime = (dateStr) => {
@@ -63,6 +65,10 @@ export default function TradingViewTradeTable({
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Quick Review State
+  const [isQuickReviewOpen, setIsQuickReviewOpen] = useState(false);
+  const [tradesToReview, setTradesToReview] = useState([]);
 
   // Reset to page 1 whenever filters change
   useEffect(() => {

@@ -45,3 +45,30 @@ export async function POST(req) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export async function DELETE(req) {
+  try {
+    const { url } = await req.json();
+    if (!url) {
+      return NextResponse.json({ success: false, error: 'No url provided' }, { status: 400 });
+    }
+    
+    // Only allow deleting files in /uploads/charts/
+    if (url.startsWith('/uploads/charts/')) {
+      const filename = path.basename(url);
+      const filePath = path.join(process.cwd(), 'public', 'uploads', 'charts', filename);
+      
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        return NextResponse.json({ success: true, message: 'File deleted' });
+      } else {
+        return NextResponse.json({ success: false, error: 'File not found on disk' }, { status: 404 });
+      }
+    }
+    
+    return NextResponse.json({ success: false, error: 'Invalid URL for deletion' }, { status: 400 });
+  } catch (error) {
+    console.error('Delete Error:', error);
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}
