@@ -125,8 +125,9 @@ export default function DashboardPage() {
                 </div>
 
                 {/* Right Column: AI Insights & Analytics */}
-                <div className="space-y-8 xl:col-span-1 animate-slide-down">
+                <div className="space-y-6 xl:col-span-1 animate-slide-down">
                   
+
 
                   <TradingRules 
                     trades={trades} 

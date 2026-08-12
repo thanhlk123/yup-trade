@@ -366,10 +366,6 @@ export default function TradeList() {
 
                                 if (allTags.length === 0) return null;
 
-                                const midIndex = Math.ceil(allTags.length / 2);
-                                const leftColumnTags = allTags.slice(0, midIndex);
-                                const rightColumnTags = allTags.slice(midIndex);
-
                                 return (
                                   <details className="group/profile rounded-xl border border-indigo-100/40 dark:border-indigo-500/10 bg-indigo-50/20 dark:bg-indigo-900/10 transition-all duration-300 overflow-hidden">
                                     <summary className="flex justify-between items-center cursor-pointer list-none text-[10px] text-indigo-700/70 dark:text-indigo-300/80 uppercase tracking-widest font-bold hover:text-indigo-800 hover:bg-indigo-50/40 dark:hover:text-indigo-200 transition-colors p-3 px-4">
@@ -383,34 +379,16 @@ export default function TradeList() {
                                       </div>
                                     </summary>
                                     
-                                    <div className="px-4 pb-4 pt-3 border-t border-indigo-100/40 dark:border-indigo-500/10">
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
-                                        <div className="space-y-3">
-                                          {leftColumnTags.map((t, i) => (
-                                            <div key={`left-${i}`} className="flex items-center justify-between sm:justify-start sm:grid sm:grid-cols-[85px_1fr]">
-                                              <span className="text-[11px] text-slate-500 dark:text-slate-400">{t.label}:</span>
-                                              <div className="flex">
-                                                <span className={`text-[10.5px] font-medium px-2 py-0.5 rounded ${getTagStyle(t.label)} shadow-sm`}>
-                                                  {t.format ? t.format(t.value) : t.value}
-                                                </span>
-                                              </div>
-                                            </div>
-                                          ))}
-                                        </div>
-                                        {rightColumnTags.length > 0 && (
-                                          <div className="space-y-3 sm:border-l sm:border-indigo-100/50 sm:dark:border-indigo-500/10 sm:pl-6">
-                                            {rightColumnTags.map((t, i) => (
-                                              <div key={`right-${i}`} className="flex items-center justify-between sm:justify-start sm:grid sm:grid-cols-[85px_1fr]">
-                                                <span className="text-[11px] text-slate-500 dark:text-slate-400">{t.label}:</span>
-                                                <div className="flex">
-                                                  <span className={`text-[10.5px] font-medium px-2 py-0.5 rounded ${getTagStyle(t.label)} shadow-sm`}>
-                                                    {t.format ? t.format(t.value) : t.value}
-                                                  </span>
-                                                </div>
-                                              </div>
-                                            ))}
+                                    <div className="p-3 border-t border-indigo-100/40 dark:border-indigo-500/10 bg-white/30 dark:bg-slate-950/20">
+                                      <div className="flex flex-wrap gap-2.5">
+                                        {allTags.map((t, i) => (
+                                          <div key={`tag-${i}`} className="flex items-center gap-1.5 bg-white/70 dark:bg-slate-900/60 px-2.5 py-1.5 rounded-lg border border-slate-200/60 dark:border-slate-700/50 shadow-sm">
+                                            <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">{t.label}:</span>
+                                            <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${getTagStyle(t.label)}`}>
+                                              {t.format ? t.format(t.value) : t.value}
+                                            </span>
                                           </div>
-                                        )}
+                                        ))}
                                       </div>
                                     </div>
                                   </details>
@@ -516,11 +494,12 @@ export default function TradeList() {
                                             </>
                                           ) : ai.coach_message ? (
                                             <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
+                                              <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide flex items-center gap-1.5"><Brain className="w-4 h-4 opacity-80" /> AI COACH</span>
                                               {ai.coach_message}
                                             </div>
                                           ) : (
                                             <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
-                                              <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide">🧠 COACH</span>
+                                              <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide flex items-center gap-1.5"><Brain className="w-4 h-4 opacity-80" /> AI COACH</span>
                                               {(ai.strengths || []).map((s, i) => <span key={`s-${i}`} className="block mb-1.5"><span className="text-emerald-500 mr-1">✓</span>{s}</span>)}
                                               {(ai.weaknesses || []).map((w, i) => <span key={`w-${i}`} className="block mb-1.5"><span className="text-rose-500 mr-1">✗</span>{w}</span>)}
                                               {ai.advice && <span className="block mt-2 pt-2 border-t border-slate-200 dark:border-white/5 italic text-slate-600 dark:text-slate-400">{ai.advice}</span>}

@@ -60,6 +60,7 @@ export default function QuickReviewModal({ zIndex = 100 }) {
   
   const [isAddingUrl, setIsAddingUrl] = useState(false);
   const [imageUrlInput, setImageUrlInput] = useState('');
+  const [imgErrorState, setImgErrorState] = useState({});
   
   const [editingTag, setEditingTag] = useState(null); // { oldTag: '', category: '' }
 
@@ -292,12 +293,12 @@ export default function QuickReviewModal({ zIndex = 100 }) {
     const baseStyle = 'focus:outline-none';
     if (isSelected) {
       return isDark 
-        ? `${baseStyle} bg-emerald-500/20 border-2 border-emerald-500 text-emerald-400 font-bold shadow-[0_4px_0_rgba(16,185,129,0.5)] active:translate-y-[4px] active:shadow-none`
-        : `${baseStyle} bg-emerald-100 border-2 border-emerald-500 text-emerald-700 font-bold shadow-[0_4px_0_#10b981] active:translate-y-[4px] active:shadow-none`;
+        ? `${baseStyle} bg-emerald-500/20 border-2 border-emerald-500 text-emerald-400 font-bold shadow-sm active:scale-[0.98] transition-transform`
+        : `${baseStyle} bg-emerald-100 border-2 border-emerald-500 text-emerald-700 font-bold shadow-sm active:scale-[0.98] transition-transform`;
     }
     return isDark 
-      ? `${baseStyle} bg-[#1a1e29] border-2 border-[#2a2e39] text-gray-400 hover:bg-[#202532] font-bold shadow-[0_4px_0_#2a2e39] active:translate-y-[4px] active:shadow-none`
-      : `${baseStyle} bg-white border-2 border-gray-200 text-gray-500 hover:bg-gray-50 font-bold shadow-[0_4px_0_#e5e7eb] active:translate-y-[4px] active:shadow-none`;
+      ? `${baseStyle} bg-[#1a1e29] border-2 border-[#2a2e39] text-gray-400 hover:bg-[#202532] font-bold shadow-sm active:scale-[0.98] transition-transform`
+      : `${baseStyle} bg-white border-2 border-gray-200 text-gray-500 hover:bg-gray-50 font-bold shadow-sm active:scale-[0.98] transition-transform`;
   };
 
   const getStepBadgeStyle = (isSelected, isDark) => {
@@ -602,15 +603,15 @@ export default function QuickReviewModal({ zIndex = 100 }) {
                         {!hasTriggeredGenRef.current && canGenerateChart && (
                           <button 
                             onClick={() => triggerLocalImageGeneration(trade)}
-                            className="flex items-center space-x-2 px-6 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-white rounded-2xl font-black border-2 border-emerald-600 shadow-[0_4px_0_#059669] transition-all active:translate-y-[4px] active:shadow-none group"
+                            className="flex items-center space-x-2 px-4 py-2 text-sm bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl font-black border-2 border-emerald-600 shadow-sm transition-all active:scale-95 group"
                           >
-                            <Wand2 className="w-5 h-5 group-hover:animate-bounce" />
+                            <Wand2 className="w-4 h-4 group-hover:animate-bounce" />
                             <span>Tạo ảnh ngay</span>
-                            <Sparkles className="w-4 h-4 text-yellow-300 animate-pulse" />
+                            <Sparkles className="w-3 h-3 text-yellow-300 animate-pulse" />
                           </button>
                         )}
-                        <label className={`relative flex items-center space-x-2 px-6 py-3.5 rounded-2xl font-black border-2 transition-all shadow-[0_4px_0_#e2e8f0] dark:shadow-[0_4px_0_#2a2e39] active:translate-y-[4px] active:shadow-none cursor-pointer group ${isDark ? 'bg-[#1a1e29] hover:bg-[#202532] border-[#2a2e39] text-gray-300' : 'bg-white hover:bg-gray-50 border-gray-200 text-slate-700'}`}>
-                          <Upload className="w-5 h-5 group-hover:-translate-y-1 transition-transform" />
+                        <label className={`relative flex items-center space-x-2 px-4 py-2 text-sm rounded-xl font-black border-2 transition-all shadow-sm cursor-pointer active:scale-95 group ${isDark ? 'bg-[#1a1e29] hover:bg-[#202532] border-[#2a2e39] text-gray-300' : 'bg-white hover:bg-gray-50 border-gray-200 text-slate-700'}`}>
+                          <Upload className="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" />
                           <span>Tải ảnh lên</span>
                           <input
                             type="file"
@@ -623,10 +624,10 @@ export default function QuickReviewModal({ zIndex = 100 }) {
                         <button
                           type="button"
                           onClick={() => setIsAddingUrl(!isAddingUrl)}
-                          className={`relative flex items-center justify-center p-3.5 px-6 rounded-2xl font-black border-2 transition-all shadow-[0_4px_0_#e2e8f0] dark:shadow-[0_4px_0_#2a2e39] active:translate-y-[4px] active:shadow-none group ${isDark ? 'bg-[#1a1e29] hover:bg-[#202532] border-[#2a2e39] text-gray-300' : 'bg-white hover:bg-gray-50 border-gray-200 text-slate-700'}`}
+                          className={`relative flex items-center justify-center px-4 py-2 text-sm rounded-xl font-black border-2 transition-all shadow-sm active:scale-95 group ${isDark ? 'bg-[#1a1e29] hover:bg-[#202532] border-[#2a2e39] text-gray-300' : 'bg-white hover:bg-gray-50 border-gray-200 text-slate-700'}`}
                           title="Thêm ảnh từ URL"
                         >
-                          <Link className="w-5 h-5 mr-2 group-hover:-translate-y-1 transition-transform" />
+                          <Link className="w-4 h-4 mr-1.5 group-hover:-translate-y-0.5 transition-transform" />
                           <span>Link URL</span>
                         </button>
                       </div>
@@ -661,12 +662,27 @@ export default function QuickReviewModal({ zIndex = 100 }) {
                   );
                 }
                 
+                const currentImgSrc = generatedImages[currentImageSlide];
+                const isImgError = imgErrorState[currentImgSrc];
+
                 return (
-                  <div className="relative w-full h-full group bg-[#131722]">
-                    <img src={generatedImages[currentImageSlide]} alt="Generated Chart" className="w-full h-full object-contain" />
-                    <span className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-emerald-500 text-white px-4 py-1.5 rounded-full text-xs font-black shadow-lg shadow-emerald-500/20">
-                      Ảnh {currentImageSlide + 1}
-                    </span>
+                  <div className={`relative w-full h-full group ${isDark ? 'bg-[#131722]' : 'bg-gray-100'}`}>
+                    {isImgError ? (
+                      <div className={`w-full h-full flex flex-col items-center justify-center ${isDark ? 'bg-[#1a1e29] text-gray-500' : 'bg-gray-50 text-gray-400'}`}>
+                        <div className={`p-4 rounded-full mb-3 ${isDark ? 'bg-[#2a2e39]' : 'bg-gray-200'}`}>
+                          <ImageIcon size={32} className="opacity-50" />
+                        </div>
+                        <span className="text-sm font-semibold">Ảnh bị lỗi hoặc không tải được</span>
+                        <span className="text-xs opacity-70 mt-1 truncate max-w-[80%]">{currentImgSrc}</span>
+                      </div>
+                    ) : (
+                      <img 
+                        src={currentImgSrc} 
+                        alt="Generated Chart" 
+                        className="w-full h-full object-contain"
+                        onError={() => setImgErrorState(prev => ({...prev, [currentImgSrc]: true}))}
+                      />
+                    )}
                     
                     <button
                       onClick={() => handleRemoveImage(currentImageSlide)}
@@ -1373,22 +1389,22 @@ export default function QuickReviewModal({ zIndex = 100 }) {
                   <button
                     onClick={handleBack}
                     disabled={currentIndex === 0 || isSaving}
-                    className={`w-16 flex items-center justify-center py-4 rounded-2xl border-2 transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed ${isDark ? 'bg-[#1a1e29] border-[#2a2e39] text-gray-400 hover:bg-[#202532] shadow-[0_4px_0_#2a2e39]' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50 shadow-[0_4px_0_#e5e7eb]'} active:translate-y-[4px] active:shadow-none`}
+                    className={`w-14 flex items-center justify-center py-3 rounded-xl border-2 transition-all font-bold disabled:opacity-50 disabled:cursor-not-allowed ${isDark ? 'bg-[#1a1e29] border-[#2a2e39] text-gray-400 hover:bg-[#202532] shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50 shadow-sm'} active:scale-[0.98]`}
                   >
-                    <ArrowLeft size={24} />
+                    <ArrowLeft size={20} />
                   </button>
                 )}
                 <button
                   onClick={handleSaveAndNext}
                   disabled={isSaving}
-                  className="flex-1 flex items-center justify-center space-x-2 py-4 bg-emerald-500 hover:bg-emerald-400 text-white font-black text-lg rounded-2xl border-2 border-emerald-600 shadow-[0_4px_0_#059669] active:translate-y-[4px] active:shadow-none transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  className="flex-1 flex items-center justify-center space-x-2 py-3 bg-emerald-500 hover:bg-emerald-400 text-white font-black text-base rounded-xl border-2 border-emerald-600 shadow-sm active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
                   {isSaving ? (
-                    <Loader2 size={24} className="animate-spin" />
+                    <Loader2 size={20} className="animate-spin" />
                   ) : (
                     <>
                       <span>{currentIndex < trades.length - 1 ? 'Lưu & Tiếp theo' : 'Lưu & Hoàn thành'}</span>
-                      {currentIndex < trades.length - 1 ? <ArrowRight size={24} /> : <CheckCircle size={24} />}
+                      {currentIndex < trades.length - 1 ? <ArrowRight size={20} /> : <CheckCircle size={20} />}
                     </>
                   )}
                 </button>
