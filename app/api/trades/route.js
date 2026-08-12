@@ -88,6 +88,10 @@ export async function POST(request) {
     const exit = parseFloat(exit_price);
     const sz = parseFloat(size);
     
+    if (isNaN(entry) || isNaN(exit) || isNaN(sz) || entry <= 0 || exit <= 0 || sz <= 0) {
+      return NextResponse.json({ success: false, error: 'Giá hoặc khối lượng không hợp lệ' }, { status: 400 });
+    }
+    
     let pnl = body_pnl === '' || body_pnl === null || body_pnl === undefined ? NaN : parseFloat(body_pnl);
     if (isNaN(pnl)) {
       const contractSize = getContractSize(asset);
@@ -278,6 +282,10 @@ export async function PUT(request) {
     const entry = parseFloat(entry_price);
     const exit = parseFloat(exit_price);
     const sz = parseFloat(size);
+    
+    if (isNaN(entry) || isNaN(exit) || isNaN(sz) || entry <= 0 || exit <= 0 || sz <= 0) {
+      return NextResponse.json({ success: false, error: 'Giá hoặc khối lượng không hợp lệ' }, { status: 400 });
+    }
     
     let pnl = body.pnl !== undefined ? (body.pnl === '' || body.pnl === null ? NaN : parseFloat(body.pnl)) : parseFloat(existing.pnl);
     if (isNaN(pnl)) {

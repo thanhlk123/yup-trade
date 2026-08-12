@@ -58,10 +58,12 @@ export async function POST(request) {
           `SELECT id FROM trades 
            WHERE asset = ? 
               AND side = ? 
+              AND trade_type = ?
+              AND trade_time IS NOT NULL AND ? IS NOT NULL 
               AND ABS(strftime('%s', trade_time) - strftime('%s', ?)) < 60 
               AND ABS(size - ?) < 0.0001 
               AND ABS(pnl - ?) < 0.01`,
-          [asset, upperSide, trade_time, parseFloat(size), parseFloat(pnl)]
+          [asset, upperSide, trade_type || 'LIVE', trade_time, trade_time, parseFloat(size), parseFloat(pnl)]
         );
 
         if (existing) {
