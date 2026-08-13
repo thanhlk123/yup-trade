@@ -1,13 +1,23 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { Plus, X, ChevronLeft, ChevronRight, Image as ImageIcon, Maximize2, Sparkles, Target, Brain, BookOpen, Calendar, Wand2, Upload, Link } from 'lucide-react';
+import { AlertCircle,  useState, useRef } from 'react';
+import { Plus, X, ChevronLeft, ChevronRight, Image as ImageIcon, Maximize2, Sparkles, Target, Brain, BookOpen, Calendar, Wand2, Upload, Link  } from 'lucide-react';
 import { useLanguageStore } from '@/app/core/i18n/store';
 import { useThemeStore } from '@/app/core/theme/store';
 import { useDashboardStore } from '@/app/features/dashboard/store/dashboardStore';
 import { getTradeTypeBadge } from '@/lib/tradeUtils';
 import { parseImageUrls } from '@/lib/imageUtils';
 import HiddenChartGenerator from './HiddenChartGenerator';
+
+
+const getTagStyle = (label) => {
+  if (label === 'Xu hướng' || label === 'Vào lệnh') return "text-blue-700 dark:text-blue-300 bg-blue-100/40 dark:bg-blue-500/10 border border-blue-200/30 dark:border-blue-500/20";
+  if (label === 'Chất lượng' || label === 'Kế hoạch Risk') return "text-emerald-700 dark:text-emerald-300 bg-emerald-100/40 dark:bg-emerald-500/10 border border-emerald-200/30 dark:border-emerald-500/20";
+  if (label === 'Quản lý' || label === 'Lý do chốt') return "text-violet-700 dark:text-violet-300 bg-violet-100/40 dark:bg-violet-500/10 border border-violet-200/30 dark:border-violet-500/20";
+  if (label === 'Tâm lý') return "text-amber-700 dark:text-amber-300 bg-amber-100/40 dark:bg-amber-500/10 border border-amber-200/30 dark:border-amber-500/20";
+  if (label === 'Lỗi sai') return "text-rose-700 dark:text-rose-300 bg-rose-100/40 dark:bg-rose-500/10 border border-rose-200/30 dark:border-rose-500/20";
+  return "text-slate-700 dark:text-slate-300 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200/40 dark:border-slate-700/50";
+};
 
 export default function TradeCarouselModal() {
   const t = useLanguageStore(state => state.t);
@@ -16,6 +26,8 @@ export default function TradeCarouselModal() {
   const isDark = theme === 'dark';
   const trades = useDashboardStore(state => state.trades) || [];
   const activeTab = useDashboardStore(state => state.activeTab);
+  const accountTabs = useDashboardStore(state => state.accountTabs) || [];
+  const language = useLanguageStore(state => state.language);
   const fetchDashboardData = useDashboardStore(state => state.fetchDashboardData);
   
   const isCarouselOpen = useDashboardStore(state => state.isCarouselOpen);
@@ -27,6 +39,11 @@ export default function TradeCarouselModal() {
   const [tradeToGenerateImage, setTradeToGenerateImage] = useState(null);
   const hasTriggeredGenRef = useRef(false);
   const [isAddingUrl, setIsAddingUrl] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3000);
+  };
   const [imageUrlInput, setImageUrlInput] = useState('');
 
   const [carouselImageIndex, setCarouselImageIndex] = useState(0);
@@ -36,6 +53,10 @@ export default function TradeCarouselModal() {
 
   const zoomContainerRef = useRef(null);
   const dragStatusRef = useRef({ isDragging: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
+
+  const carouselTrade = trades[carouselIndex];
+  const carouselImages = carouselTrade ? parseImageUrls(carouselTrade.image_url) : [];
+
 
   const handleMouseDown = (e) => {
     if (zoomScale === 1 || !zoomContainerRef.current) return;
@@ -64,6 +85,24 @@ export default function TradeCarouselModal() {
     container.scrollTop = scrollTop - walkY;
   };
 
+  
+  const handleNextImage = (e) => {
+    if (e) e.stopPropagation();
+    setCarouselImageIndex(idx => {
+      const m = carouselImages.length < 10 ? carouselImages.length : carouselImages.length - 1;
+      return idx >= m ? 0 : idx + 1;
+    });
+  };
+
+  const handlePrevImage = (e) => {
+    if (e) e.stopPropagation();
+    setCarouselImageIndex(idx => {
+      const m = carouselImages.length < 10 ? carouselImages.length : carouselImages.length - 1;
+      return idx === 0 ? m : idx - 1;
+    });
+  };
+
+
   const handleMouseUpOrLeave = () => {
     if (!dragStatusRef.current.isDragging) return;
     dragStatusRef.current.isDragging = false;
@@ -74,13 +113,129 @@ export default function TradeCarouselModal() {
   };
 
 
+  const renderImageUploader = (isNew = false) => (
+    <div className="flex flex-col items-center justify-center p-6 text-center space-y-6 w-full h-full relative z-10">
+      {isGeneratingImage ? (
+        <div className="flex flex-col items-center justify-center space-y-6">
+          <div className="relative flex items-center justify-center h-24 w-24">
+            <div className="absolute w-full h-full bg-emerald-500/20 rounded-full animate-ping" />
+            <div className="absolute w-16 h-16 bg-emerald-500/40 rounded-full animate-pulse" />
+            <Wand2 className="w-8 h-8 text-emerald-500 animate-bounce relative z-10" />
+          </div>
+          <div className="space-y-1 text-center">
+            <p className={`text-lg font-black tracking-tight ${themeStyles.titleText}`}>
+              AI đang vẽ biểu đồ...
+            </p>
+            <p className={`text-sm font-medium ${themeStyles.subtext} flex items-center justify-center`}>
+              Chờ một chút nhé...
+            </p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="relative">
+            <div className="absolute inset-0 blur-2xl bg-emerald-500/10 rounded-full animate-pulse" />
+            <div className={`relative p-5 rounded-3xl border-2 ${themeStyles.innerCard} ${themeStyles.border} ${themeStyles.subtext}`}>
+              <ImageIcon className="w-12 h-12" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className={`text-lg font-black tracking-tight ${themeStyles.titleText}`}>
+              {isNew ? 'Thêm ảnh đính kèm' : (carouselImages.length === 0 ? 'Chưa có ảnh đính kèm' : 'Thêm ảnh đính kèm')}
+            </p>
+            <p className={`text-sm font-medium ${themeStyles.subtext}`}>
+              {carouselImages.length === 0 ? 'Hệ thống có thể tự động dựng biểu đồ' : `Đã thêm ${carouselImages.length}/10 ảnh`}
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap">
+            <button 
+              onClick={() => triggerLocalImageGeneration(carouselTrade)}
+              className="flex items-center space-x-2 px-4 py-2 text-sm bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl font-black border-2 border-emerald-600 shadow-sm transition-all active:scale-95 group"
+            >
+              <Wand2 className="w-4 h-4 group-hover:animate-bounce" />
+              <span>Tạo ảnh ngay</span>
+              <Sparkles className="w-3 h-3 text-yellow-300 animate-pulse" />
+            </button>
+            
+            <label className={`relative flex items-center space-x-2 px-4 py-2 text-sm rounded-xl font-black border transition-all shadow-sm cursor-pointer active:scale-95 group ${themeStyles.innerCard} ${themeStyles.border} ${themeStyles.titleText} hover:opacity-80`}>
+              <Upload className="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" />
+              <span>Tải ảnh lên</span>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => handleCarouselImageUpload(e, carouselTrade)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+            </label>
+            
+            <button
+              type="button"
+              onClick={() => setIsAddingUrl(!isAddingUrl)}
+              className={`relative flex items-center justify-center px-4 py-2 text-sm rounded-xl font-black border transition-all shadow-sm active:scale-95 group ${themeStyles.innerCard} ${themeStyles.border} ${themeStyles.titleText} hover:opacity-80`}
+              title="Thêm ảnh từ URL"
+            >
+              <Link className="w-4 h-4 mr-1.5 group-hover:-translate-y-0.5 transition-transform" />
+              <span>Link URL</span>
+            </button>
+          </div>
+
+          {isAddingUrl && (
+            <div className="w-full max-w-sm mx-auto mt-4 flex gap-2">
+              <input
+                type="text"
+                value={imageUrlInput}
+                onChange={(e) => setImageUrlInput(e.target.value)}
+                placeholder="Nhập URL ảnh (https://...)"
+                className={`flex-1 px-4 py-2 rounded-xl border outline-none font-medium text-sm ${themeStyles.innerCard} ${themeStyles.border} ${themeStyles.titleText} focus:border-emerald-500`}
+              />
+              <button
+                onClick={async () => {
+                  if (!imageUrlInput.trim()) return;
+                  if (carouselImages.length >= 10) {
+                    showToast('Đã đạt giới hạn tối đa 10 ảnh.');
+                    return;
+                  }
+                  const newImages = [...carouselImages, imageUrlInput.trim()];
+                  try {
+                    const response = await fetch('/api/trades', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        ...carouselTrade,
+                        image_url: JSON.stringify(newImages)
+                      })
+                    });
+                    if (response.ok) {
+                      await fetchDashboardData(activeTab);
+                      setCarouselImageIndex(newImages.length - 1);
+                      setImageUrlInput('');
+                      setIsAddingUrl(false);
+                    }
+                  } catch(e) {
+                    console.error(e);
+                  }
+                }}
+                className="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-bold transition-colors"
+              >
+                Thêm
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+
+
 
   
   const triggerLocalImageGeneration = async (trade) => {
     if (hasTriggeredGenRef.current || tradeToGenerateImage) return;
     let existingImages = parseImageUrls(trade.image_url);
     if (existingImages.length >= 10) {
-      alert('Đã đạt giới hạn tối đa 10 ảnh. Vui lòng xoá bớt ảnh trước khi tạo thêm.');
+      showToast('Đã đạt giới hạn tối đa 10 ảnh. Vui lòng xoá bớt trước khi tạo thêm.');
       return;
     }
     hasTriggeredGenRef.current = true;
@@ -95,7 +250,7 @@ export default function TradeCarouselModal() {
     let existingImages = parseImageUrls(trade.image_url);
 
     if (existingImages.length + files.length > 10) {
-      alert("Bạn chỉ được đính kèm tối đa 10 hình ảnh biểu đồ cho mỗi giao dịch.");
+      showToast('Bạn chỉ được đính kèm tối đa 10 hình ảnh cho mỗi giao dịch.');
       return;
     }
 
@@ -138,18 +293,6 @@ export default function TradeCarouselModal() {
       }
     }
   };
-
-
-  
-  const getTagStyle = (label) => {
-    if (label === 'Xu hướng' || label === 'Vào lệnh') return "text-blue-700 dark:text-blue-300 bg-blue-100/40 dark:bg-blue-500/10 border border-blue-200/30 dark:border-blue-500/20";
-    if (label === 'Chất lượng' || label === 'Kế hoạch Risk') return "text-emerald-700 dark:text-emerald-300 bg-emerald-100/40 dark:bg-emerald-500/10 border border-emerald-200/30 dark:border-emerald-500/20";
-    if (label === 'Quản lý' || label === 'Lý do chốt') return "text-violet-700 dark:text-violet-300 bg-violet-100/40 dark:bg-violet-500/10 border border-violet-200/30 dark:border-violet-500/20";
-    if (label === 'Tâm lý') return "text-amber-700 dark:text-amber-300 bg-amber-100/40 dark:bg-amber-500/10 border border-amber-200/30 dark:border-amber-500/20";
-    if (label === 'Lỗi sai') return "text-rose-700 dark:text-rose-300 bg-rose-100/40 dark:bg-rose-500/10 border border-rose-200/30 dark:border-rose-500/20";
-    return "text-slate-700 dark:text-slate-300 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200/40 dark:border-slate-700/50";
-  };
-
   return (
     <>
       {zoomImages.length > 0 && (
@@ -296,7 +439,7 @@ export default function TradeCarouselModal() {
 
       {isCarouselOpen && trades.length > 0 && trades[carouselIndex] && (
         <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 animate-fade-in ${isDark ? 'bg-slate-950/90' : 'bg-slate-900/60'} backdrop-blur-md`}>
-          <div className={`relative w-full max-w-6xl h-[85vh] rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-scale-in border ${themeStyles.card} ${themeStyles.border}`}>
+          <div className={`relative w-full max-w-[1400px] w-[95vw] h-[85vh] rounded-3xl overflow-hidden flex flex-col shadow-2xl animate-scale-in border ${themeStyles.card} ${themeStyles.border}`}>
             
             {/* Header */}
             <div className={`px-6 py-4 border-b flex items-center justify-between ${themeStyles.border} ${isDark ? 'bg-[#131722]' : 'bg-slate-50'}`}>
@@ -312,7 +455,7 @@ export default function TradeCarouselModal() {
                   {trades[carouselIndex].side}
                 </span>
                 {(() => {
-                  const badge = getTradeTypeBadge(trades[carouselIndex].trade_type);
+                  const badge = getTradeTypeBadge(trades[carouselIndex].trade_type, language, accountTabs);
                   return (
                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${badge.className}`}>
                       {badge.text}
@@ -332,17 +475,6 @@ export default function TradeCarouselModal() {
               <div className={`flex flex-col rounded-2xl border p-4 min-h-[350px] lg:h-full justify-between relative overflow-hidden group ${themeStyles.innerCard} ${themeStyles.border}`}>
                 <div className="flex-1 flex items-center justify-center relative min-h-0">
                   {(() => {
-                    const carouselTrade = trades[carouselIndex];
-                    let carouselImages = [];
-                    if (carouselTrade.image_url) {
-                      try {
-                        const parsed = JSON.parse(carouselTrade.image_url);
-                        carouselImages = Array.isArray(parsed) ? parsed : [carouselTrade.image_url];
-                      } catch (e) {
-                        carouselImages = [carouselTrade.image_url];
-                      }
-                    }
-
                     if (carouselImages.length === 0) {
                       return (
                         <div className="flex flex-col items-center justify-center p-6 text-center space-y-6 w-full h-full">
@@ -424,7 +556,7 @@ export default function TradeCarouselModal() {
                                     onClick={async () => {
                                       if (!imageUrlInput.trim()) return;
                                       if (carouselImages.length >= 10) {
-                                        alert('Đã đạt giới hạn tối đa 10 ảnh.');
+                                        showToast('Đã đạt giới hạn tối đa 10 ảnh.');
                                         return;
                                       }
                                       const newImages = [...carouselImages, imageUrlInput.trim()];
@@ -460,145 +592,25 @@ export default function TradeCarouselModal() {
                     }
 
                     
-                    const isAddMoreSlide = carouselImageIndex >= carouselImages.length;
+                    let safeImageIndex = carouselImageIndex;
+                    if (safeImageIndex >= carouselImages.length && carouselImages.length >= 10) {
+                      safeImageIndex = carouselImages.length - 1;
+                      // optionally we could set state here but it's during render, so just use safe value
+                    }
+                    const isAddMoreSlide = safeImageIndex >= carouselImages.length && carouselImages.length < 10;
+                    const displayIndex = isAddMoreSlide ? safeImageIndex : Math.min(safeImageIndex, carouselImages.length - 1);
                     
                     if (isAddMoreSlide) {
                       return (
-                        <div className="flex flex-col items-center justify-center p-6 text-center space-y-6 w-full h-full relative z-10">
-                          {isGeneratingImage ? (
-                            <div className="flex flex-col items-center justify-center space-y-6">
-                              <div className="relative flex items-center justify-center h-24 w-24">
-                                <div className="absolute w-full h-full bg-emerald-500/20 rounded-full animate-ping" />
-                                <div className="absolute w-16 h-16 bg-emerald-500/40 rounded-full animate-pulse" />
-                                <Wand2 className="w-8 h-8 text-emerald-500 animate-bounce relative z-10" />
-                              </div>
-                              <div className="space-y-1 text-center">
-                                <p className={`text-lg font-black tracking-tight ${themeStyles.titleText}`}>
-                                  AI đang vẽ biểu đồ...
-                                </p>
-                                <p className={`text-sm font-medium ${themeStyles.subtext} flex items-center justify-center`}>
-                                  Chờ một chút nhé...
-                                </p>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="relative">
-                                <div className="absolute inset-0 blur-2xl bg-emerald-500/10 rounded-full animate-pulse" />
-                                <div className={`relative p-5 rounded-3xl border-2 ${themeStyles.innerCard} ${themeStyles.border} ${themeStyles.subtext}`}>
-                                  <ImageIcon className="w-12 h-12" />
-                                </div>
-                              </div>
-                              <div className="space-y-1">
-                                <p className={`text-lg font-black tracking-tight ${themeStyles.titleText}`}>
-                                  Thêm ảnh đính kèm
-                                </p>
-                                <p className={`text-sm font-medium ${themeStyles.subtext}`}>
-                                  Đã thêm {carouselImages.length}/10 ảnh
-                                </p>
-                              </div>
-                              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap">
-                                <button 
-                                  onClick={() => triggerLocalImageGeneration(carouselTrade)}
-                                  className="flex items-center space-x-2 px-4 py-2 text-sm bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl font-black border-2 border-emerald-600 shadow-sm transition-all active:scale-95 group"
-                                >
-                                  <Wand2 className="w-4 h-4 group-hover:animate-bounce" />
-                                  <span>Tạo ảnh ngay</span>
-                                  <Sparkles className="w-3 h-3 text-yellow-300 animate-pulse" />
-                                </button>
-                                
-                                <label className={`relative flex items-center space-x-2 px-4 py-2 text-sm rounded-xl font-black border transition-all shadow-sm cursor-pointer active:scale-95 group ${themeStyles.innerCard} ${themeStyles.border} ${themeStyles.titleText} hover:opacity-80`}>
-                                  <Upload className="w-4 h-4 group-hover:-translate-y-0.5 transition-transform" />
-                                  <span>Tải ảnh lên</span>
-                                  <input
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    onChange={(e) => handleCarouselImageUpload(e, carouselTrade)}
-                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                  />
-                                </label>
-                                
-                                <button
-                                  type="button"
-                                  onClick={() => setIsAddingUrl(!isAddingUrl)}
-                                  className={`relative flex items-center justify-center px-4 py-2 text-sm rounded-xl font-black border transition-all shadow-sm active:scale-95 group ${themeStyles.innerCard} ${themeStyles.border} ${themeStyles.titleText} hover:opacity-80`}
-                                  title="Thêm ảnh từ URL"
-                                >
-                                  <Link className="w-4 h-4 mr-1.5 group-hover:-translate-y-0.5 transition-transform" />
-                                  <span>Link URL</span>
-                                </button>
-                              </div>
-
-                              {isAddingUrl && (
-                                <div className="w-full max-w-sm mx-auto mt-4 flex gap-2">
-                                  <input
-                                    type="text"
-                                    value={imageUrlInput}
-                                    onChange={(e) => setImageUrlInput(e.target.value)}
-                                    placeholder="Nhập URL ảnh (https://...)"
-                                    className={`flex-1 px-4 py-2 rounded-xl border outline-none font-medium text-sm ${themeStyles.innerCard} ${themeStyles.border} ${themeStyles.titleText} focus:border-emerald-500`}
-                                  />
-                                  <button
-                                    onClick={async () => {
-                                      if (!imageUrlInput.trim()) return;
-                                      if (carouselImages.length >= 10) {
-                                        alert('Đã đạt giới hạn tối đa 10 ảnh.');
-                                        return;
-                                      }
-                                      const newImages = [...carouselImages, imageUrlInput.trim()];
-                                      try {
-                                        const response = await fetch('/api/trades', {
-                                          method: 'PUT',
-                                          headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({
-                                            ...carouselTrade,
-                                            image_url: JSON.stringify(newImages)
-                                          })
-                                        });
-                                        if (response.ok) {
-                                          await fetchDashboardData(activeTab);
-                                          setCarouselImageIndex(newImages.length - 1);
-                                          setImageUrlInput('');
-                                          setIsAddingUrl(false);
-                                        }
-                                      } catch(e) {
-                                        console.error(e);
-                                      }
-                                    }}
-                                    className="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-600 text-white font-bold transition-colors"
-                                  >
-                                    Thêm
-                                  </button>
-                                </div>
-                              )}
-                            </>
-                          )}
-
-                          {/* Image navigation arrows overlay for the uploader slide */}
-                          <>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCarouselImageIndex(idx => (idx === 0 ? carouselImages.length : idx - 1));
-                              }}
-                              className="absolute left-2 p-2 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-white rounded-full transition shadow-lg z-10 cursor-pointer"
-                            >
-                              <ChevronLeft className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setCarouselImageIndex(idx => (idx === carouselImages.length ? 0 : idx + 1));
-                              }}
-                              className="absolute right-2 p-2 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-white rounded-full transition shadow-lg z-10 cursor-pointer"
-                            >
-                              <ChevronRight className="w-4 h-4" />
-                            </button>
-                          </>
-                        </div>
+                        <>
+                          {renderImageUploader(true)}
+                          <button type="button" onClick={handlePrevImage} className="absolute left-2 p-2 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-white rounded-full transition shadow-lg z-10 cursor-pointer">
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <button type="button" onClick={handleNextImage} className="absolute right-2 p-2 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-white rounded-full transition shadow-lg z-10 cursor-pointer">
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                        </>
                       );
                     }
 
@@ -606,29 +618,31 @@ export default function TradeCarouselModal() {
 
                     return (
                       <>
-                        <img 
-                          src={activeImg} 
-                          alt={`Trade Chart ${carouselImageIndex + 1}`} 
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            if (e.target.nextElementSibling) e.target.nextElementSibling.style.display = 'flex';
-                          }}
-                          className="max-h-[46vh] object-contain rounded-lg mx-auto select-none pointer-events-none"
-                        />
-                        <div className={`absolute inset-0 hidden items-center justify-center text-slate-400 dark:text-slate-600 pointer-events-none rounded-lg max-h-[46vh] ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
-                           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-16 h-16 opacity-50"><line x1="3" y1="3" x2="21" y2="21"/><path d="M15 15l2.121-2.121A4 4 0 0 0 11.414 7.17L9 9.586"/><path d="m3 16 5-5"/><path d="M4 22h14c0-1.1.9-2 2-2"/><path d="M22 18V4a2 2 0 0 0-2-2H8"/><circle cx="9" cy="9" r="2"/></svg>
-                        </div>
-                        
-                        <div 
-                          onClick={() => {
-                            setZoomImages(carouselImages);
-                            setZoomImageIndex(carouselImageIndex);
-                          }}
-                          className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-zoom-in z-20"
-                        >
+                        <div className="relative inline-block group/image mx-auto max-w-full">
+                          <img 
+                            src={activeImg} 
+                            alt={`Trade Chart ${carouselImageIndex + 1}`} 
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              if (e.target.nextElementSibling) e.target.nextElementSibling.style.display = 'flex';
+                            }}
+                            className="max-h-[46vh] object-contain rounded-lg mx-auto select-none pointer-events-none"
+                          />
+                          <div className={`absolute inset-0 hidden items-center justify-center text-slate-400 dark:text-slate-600 pointer-events-none rounded-lg max-h-[46vh] ${isDark ? 'bg-slate-900' : 'bg-slate-100'}`}>
+                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-16 h-16 opacity-50"><line x1="3" y1="3" x2="21" y2="21"/><path d="M15 15l2.121-2.121A4 4 0 0 0 11.414 7.17L9 9.586"/><path d="m3 16 5-5"/><path d="M4 22h14c0-1.1.9-2 2-2"/><path d="M22 18V4a2 2 0 0 0-2-2H8"/><circle cx="9" cy="9" r="2"/></svg>
+                          </div>
+                          
                           <div 
-                            className={`absolute top-3 right-3 p-2 rounded-lg border shadow-xl ${isDark ? 'bg-slate-900/85 border-slate-700 text-white' : 'bg-white/85 border-slate-300 text-slate-700'}`}>
-                            <Maximize2 className="w-4 h-4" />
+                            onClick={() => {
+                              setZoomImages(carouselImages);
+                              setZoomImageIndex(carouselImageIndex);
+                            }}
+                            className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition cursor-zoom-in z-20"
+                          >
+                            <div 
+                              className={`absolute top-3 right-3 p-2 rounded-lg border shadow-xl ${isDark ? 'bg-slate-900/85 border-slate-700 text-white' : 'bg-white/85 border-slate-300 text-slate-700'}`}>
+                              <Maximize2 className="w-4 h-4" />
+                            </div>
                           </div>
                         </div>
 
@@ -636,21 +650,15 @@ export default function TradeCarouselModal() {
                         <>
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCarouselImageIndex(idx => (idx === 0 ? carouselImages.length : idx - 1));
-                            }}
-                            className="absolute left-2 p-2 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-white rounded-full transition shadow-lg z-10 cursor-pointer"
+                            onClick={handlePrevImage}
+                            className="absolute left-2 p-2 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-white rounded-full transition shadow-lg z-30 cursor-pointer"
                           >
                             <ChevronLeft className="w-4 h-4" />
                           </button>
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setCarouselImageIndex(idx => (idx === carouselImages.length ? 0 : idx + 1));
-                            }}
-                            className="absolute right-2 p-2 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-white rounded-full transition shadow-lg z-10 cursor-pointer"
+                            onClick={handleNextImage}
+                            className="absolute right-2 p-2 bg-slate-950/80 hover:bg-slate-900 border border-slate-800 text-white rounded-full transition shadow-lg z-30 cursor-pointer"
                           >
                             <ChevronRight className="w-4 h-4" />
                           </button>
@@ -662,17 +670,6 @@ export default function TradeCarouselModal() {
 
 {/* Gallery indicator thumbnails at bottom */}
                 {(() => {
-                  const carouselTrade = trades[carouselIndex];
-                  let carouselImages = [];
-                  if (carouselTrade.image_url) {
-                    try {
-                      const parsed = JSON.parse(carouselTrade.image_url);
-                      carouselImages = Array.isArray(parsed) ? parsed : [carouselTrade.image_url];
-                    } catch (e) {
-                      carouselImages = [carouselTrade.image_url];
-                    }
-                  }
-
                   if (carouselImages.length === 0) return null;
 
                   return (
@@ -737,7 +734,7 @@ export default function TradeCarouselModal() {
                       }`}>
                         {trades[carouselIndex].status === 'WIN' ? '+' : ''}{trades[carouselIndex].pnl.toLocaleString()} USD
                       </span>
-                      <p className={`text-[10px] font-mono font-bold uppercase mt-1 ${themeStyles.subtext}`}>Setup: {trades[carouselIndex].setup_tag}</p>
+                      <p className={`text-[10px] font-mono font-bold uppercase mt-1 ${themeStyles.subtext}`}>Setup: {trades[carouselIndex].setup_tag ? trades[carouselIndex].setup_tag.replace(/#SETUP_/gi, '').replace(/setup\s*/gi, '').replace(/#/g, '').replace(/_/g, ' ').trim() : ''}</p>
                     </div>
                   </div>
                 </div>
@@ -762,17 +759,192 @@ export default function TradeCarouselModal() {
                                 </div>
                               </div>
 
+                                  {trades[carouselIndex].ai_evaluation && (
+                                    <div className={`space-y-3 border-t ${themeStyles.border} pt-4 mt-2`}>
+                                      <div className={`p-4 sm:p-5 rounded-2xl bg-white/40 dark:bg-slate-900/40 relative overflow-hidden group border border-slate-200/40 dark:border-white/5`}>
+                                        <div className={`absolute inset-0 bg-gradient-to-br to-transparent pointer-events-none ${
+                                          trades[carouselIndex].ai_evaluation.coach_title?.includes('RISK') ? 'from-rose-500/5' :
+                                          trades[carouselIndex].ai_evaluation.coach_title?.includes('GOOD') ? 'from-emerald-500/5' :
+                                          'from-amber-500/5'
+                                        }`} />
+                                        
+                                        <div className="relative z-10">
+                                          {trades[carouselIndex].ai_evaluation.summary || trades[carouselIndex].ai_evaluation.diagnoses ? (
+                                            <div className="space-y-4">
+                                              <div className="flex items-center gap-1.5 font-bold tracking-wider text-[11px] uppercase mb-1">
+                                                <Brain className="w-4 h-4 opacity-80 text-indigo-500" />
+                                                <span className="text-indigo-600 dark:text-indigo-400">AI COACH</span>
+                                              </div>
+
+                                              {/* Summary Headline & Explanation */}
+                                              {trades[carouselIndex].ai_evaluation.summary && (
+                                                <div className="space-y-1">
+                                                  <div className="font-semibold text-slate-800 dark:text-slate-200 text-[11.5px] leading-snug">{trades[carouselIndex].ai_evaluation.summary.headline}</div>
+                                                  <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">{trades[carouselIndex].ai_evaluation.summary.explanation}</p>
+                                                </div>
+                                              )}
+
+                                              {/* Diagnoses */}
+                                              {trades[carouselIndex].ai_evaluation.diagnoses && trades[carouselIndex].ai_evaluation.diagnoses.length > 0 && (
+                                                <div className="space-y-2 mt-4">
+                                                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 border-t border-slate-200/50 dark:border-white/10 pt-3">TRADE DIAGNOSIS</div>
+                                                  {trades[carouselIndex].ai_evaluation.diagnoses.map((diag, i) => (
+                                                    <div key={`diag-${i}`} className="space-y-0.5">
+                                                      <div className={`font-semibold text-xs ${
+                                                        diag.severity === 'critical' ? 'text-rose-600 dark:text-rose-400' :
+                                                        diag.severity === 'warning' ? 'text-amber-600 dark:text-amber-400' :
+                                                        diag.severity === 'info' ? 'text-blue-600 dark:text-blue-400' :
+                                                        'text-slate-600 dark:text-slate-400'
+                                                      }`}>
+                                                        {diag.severity === 'critical' && '🔴'}
+                                                        {diag.severity === 'warning' && '🟠'}
+                                                        {diag.severity === 'info' && '🔵'} {diag.category}
+                                                      </div>
+                                                      {diag.title && <div className="text-[11.5px] font-medium text-slate-700 dark:text-slate-300 pl-5">{diag.title}</div>}
+                                                      <p className="text-[11px] text-slate-600 dark:text-slate-400 pl-5 leading-relaxed">{diag.explanation}</p>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              )}
+
+                                              {/* Plan Deviation */}
+                                              {trades[carouselIndex].ai_evaluation.planDeviation && trades[carouselIndex].ai_evaluation.planDeviation.detected && (
+                                                <div className="space-y-0.5 mt-3">
+                                                  <div className="font-semibold text-xs text-amber-600 dark:text-amber-400">
+                                                    🟠 PLAN DEVIATION
+                                                  </div>
+                                                  <p className="text-[11px] text-amber-700/80 dark:text-amber-300/80 pl-5 leading-relaxed">{trades[carouselIndex].ai_evaluation.planDeviation.explanation}</p>
+                                                </div>
+                                              )}
+
+                                              {/* Coaching */}
+                                              {trades[carouselIndex].ai_evaluation.coaching && trades[carouselIndex].ai_evaluation.coaching.length > 0 && (
+                                                <>
+                                                  <div className="border-t border-slate-200/50 dark:border-white/10 my-3"></div>
+                                                  <div>
+                                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">COACHING</div>
+                                                    <ul className="space-y-1.5 text-[11px] text-slate-700 dark:text-slate-300 list-decimal pl-4">
+                                                      {trades[carouselIndex].ai_evaluation.coaching.map((c, i) => (
+                                                        <li key={`coach-${i}`} className="pl-1 leading-relaxed">{c}</li>
+                                                      ))}
+                                                    </ul>
+                                                  </div>
+                                                </>
+                                              )}
+
+                                              {/* Data Inconsistency */}
+                                              {trades[carouselIndex].ai_evaluation.dataInconsistency && trades[carouselIndex].ai_evaluation.dataInconsistency.detected && (
+                                                <>
+                                                  <div className="border-t border-rose-200/50 dark:border-rose-900/30 my-3"></div>
+                                                  <div className="bg-rose-50/50 dark:bg-rose-950/20 p-2.5 rounded-xl border border-rose-100 dark:border-rose-900/50">
+                                                    <div className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                                                      <AlertTriangle className="w-3.5 h-3.5" /> DATA INCONSISTENCY
+                                                    </div>
+                                                    <div className="text-rose-500/80 dark:text-rose-300/80 text-[11px] leading-relaxed">{trades[carouselIndex].ai_evaluation.dataInconsistency.explanation}</div>
+                                                  </div>
+                                                </>
+                                              )}
+                                            </div>
+                                          ) : (
+
+                                            /* Legacy AI Format */
+                                            <>
+                                              {trades[carouselIndex].ai_evaluation.coach_verdict ? (
+                                                <>
+                                                  <div className="flex items-center gap-1.5 font-bold tracking-wider text-[11px] uppercase mb-3.5">
+                                                    <Brain className={`w-4 h-4 opacity-80 ${
+                                                      trades[carouselIndex].ai_evaluation.coach_title?.includes('RISK') ? 'text-rose-500' :
+                                                      trades[carouselIndex].ai_evaluation.coach_title?.includes('GOOD') ? 'text-emerald-500' :
+                                                      'text-amber-500'
+                                                    }`} />
+                                                    <span className={`${
+                                                      trades[carouselIndex].ai_evaluation.coach_title?.includes('RISK') ? 'text-rose-600 dark:text-rose-400' :
+                                                      trades[carouselIndex].ai_evaluation.coach_title?.includes('GOOD') ? 'text-emerald-600 dark:text-emerald-400' :
+                                                      'text-amber-600 dark:text-amber-400'
+                                                    }`}>AI Coach</span>
+                                                  </div>
+                                                  <div className="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300 space-y-2.5">
+                                                    <p className="font-semibold text-[14px] text-slate-900 dark:text-slate-100">{trades[carouselIndex].ai_evaluation.coach_verdict}</p>
+                                                    {trades[carouselIndex].ai_evaluation.coach_why && <p className="text-slate-600 dark:text-slate-400">{trades[carouselIndex].ai_evaluation.coach_why}</p>}
+                                                    {trades[carouselIndex].ai_evaluation.coach_action && (
+                                                      <div className="pt-2 mt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+                                                        <p className="whitespace-pre-line font-medium text-slate-700 dark:text-slate-300">{trades[carouselIndex].ai_evaluation.coach_action}</p>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </>
+                                              ) : trades[carouselIndex].ai_evaluation.coach_message ? (
+                                                <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
+                                                  <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide flex items-center gap-1.5"><Brain className="w-4 h-4 opacity-80" /> AI COACH</span>
+                                                  {trades[carouselIndex].ai_evaluation.coach_message}
+                                                </div>
+                                              ) : (
+                                                <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
+                                                  <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide flex items-center gap-1.5"><Brain className="w-4 h-4 opacity-80" /> AI COACH</span>
+                                                  {(trades[carouselIndex].ai_evaluation.strengths || []).map((s, i) => <span key={`s-${i}`} className="block mb-1.5"><span className="text-emerald-500 mr-1">✓</span>{s}</span>)}
+                                                  {(trades[carouselIndex].ai_evaluation.weaknesses || []).map((w, i) => <span key={`w-${i}`} className="block mb-1.5"><span className="text-rose-500 mr-1">✗</span>{w}</span>)}
+                                                  {trades[carouselIndex].ai_evaluation.advice && <span className="block mt-2 pt-2 border-t border-slate-200 dark:border-white/5 italic text-slate-600 dark:text-slate-400">{trades[carouselIndex].ai_evaluation.advice}</span>}
+                                                </div>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                        <details className="group/details relative z-10 mt-3 pt-3 border-t border-slate-200/50 dark:border-white/5">
+                                          <summary className="flex justify-between items-center cursor-pointer list-none text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-wider font-bold hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600"></span>
+                                              AI REVIEWED TRADE DATA
+                                            </div>
+                                            <div className="flex items-center gap-1 text-indigo-500">
+                                              <span className="group-open/details:hidden">Xem tại sao →</span>
+                                              <span className="hidden group-open/details:inline">Đóng lại</span>
+                                            </div>
+                                          </summary>
+                                          <div className="mt-3 text-xs space-y-3 font-mono text-slate-600 dark:text-slate-400 bg-white/50 dark:bg-black/20 p-3 rounded-lg border border-slate-200/50 dark:border-white/5">
+                                            <div className="grid grid-cols-2 gap-4">
+                                              <div>
+                                                <div className="font-bold mb-1.5 text-slate-700 dark:text-slate-300 uppercase text-[9px] tracking-wider">EVIDENCE</div>
+                                                <div className="space-y-1.5 text-[11px]">
+                                                  <div className="flex justify-between"><span>Entry</span><span className="text-slate-900 dark:text-white font-semibold">{trades[carouselIndex].entry_price || '—'}</span></div>
+                                                  <div className="flex justify-between"><span>Exit</span><span className="text-slate-900 dark:text-white font-semibold">{trades[carouselIndex].exit_price || '—'}</span></div>
+                                                  <div className="flex justify-between"><span>SL</span><span className="text-slate-900 dark:text-white font-semibold">{trades[carouselIndex].stop_loss || '—'}</span></div>
+                                                  <div className="flex justify-between"><span>Volume</span><span className="text-slate-900 dark:text-white font-semibold">{trades[carouselIndex].size || '—'}</span></div>
+                                                  <div className="flex justify-between pt-1 border-t border-slate-200/50 dark:border-white/10 mt-1">
+                                                    <span>P/L</span>
+                                                    <span className={`font-bold ${trades[carouselIndex].pnl >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
+                                                      {trades[carouselIndex].pnl >= 0 ? '+' : ''}{trades[carouselIndex].pnl}
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              <div>
+                                                <div className="font-bold mb-1.5 text-slate-700 dark:text-slate-300 uppercase text-[9px] tracking-wider">WHY</div>
+                                                <div className="space-y-1.5 text-[10px]">
+                                                  {!trades[carouselIndex].stop_loss ? (
+                                                    <>
+                                                      <div className="text-rose-500 dark:text-rose-400">→ Không có SL</div>
+                                                      <div className="text-rose-500 dark:text-rose-400">→ Không xác định invalidation</div>
+                                                      <div className="text-rose-500 dark:text-rose-400">→ Risk trước entry không xác định</div>
+                                                      <div className="text-slate-500">→ Volume {trades[carouselIndex].size || '—'} không thể đánh giá risk</div>
+                                                    </>
+                                                  ) : (
+                                                    <>
+                                                      <div className="text-emerald-500 dark:text-emerald-400">→ Có Stop Loss rõ ràng</div>
+                                                      <div className="text-emerald-500 dark:text-emerald-400">→ Đã xác định điểm Invalidation</div>
+                                                      <div className="text-emerald-500 dark:text-emerald-400">→ Risk/Reward có thể ước tính trước</div>
+                                                    </>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </details>
+                                      </div>
+                                    </div>
+                                  )}
+
                               {/* Trade Context & Execution Tags (User Inputs) */}
                               {(() => {
-                                const getTagStyle = (label) => {
-                                  if (label === 'Xu hướng' || label === 'Vào lệnh') return "text-blue-700 dark:text-blue-300 bg-blue-100/40 dark:bg-blue-500/10 border border-blue-200/30 dark:border-blue-500/20";
-                                  if (label === 'Chất lượng' || label === 'Kế hoạch Risk') return "text-emerald-700 dark:text-emerald-300 bg-emerald-100/40 dark:bg-emerald-500/10 border border-emerald-200/30 dark:border-emerald-500/20";
-                                  if (label === 'Quản lý' || label === 'Lý do chốt') return "text-violet-700 dark:text-violet-300 bg-violet-100/40 dark:bg-violet-500/10 border border-violet-200/30 dark:border-violet-500/20";
-                                  if (label === 'Tâm lý') return "text-amber-700 dark:text-amber-300 bg-amber-100/40 dark:bg-amber-500/10 border border-amber-200/30 dark:border-amber-500/20";
-                                  if (label === 'Lỗi sai') return "text-rose-700 dark:text-rose-300 bg-rose-100/40 dark:bg-rose-500/10 border border-rose-200/30 dark:border-rose-500/20";
-                                  return "text-slate-700 dark:text-slate-300 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200/40 dark:border-slate-700/50";
-                                };
-
                                 const allTags = [
                                   { label: 'Xu hướng', value: trades[carouselIndex].market_trend, format: (v) => v.replace('#Trend_', '').replace(/_/g, ' ') },
                                   { label: 'Khung lớn', value: trades[carouselIndex].htf_context, format: (v) => v.replace(/_/g, ' ') },
@@ -832,108 +1004,6 @@ export default function TradeCarouselModal() {
 
                               
 
-                                  {trades[carouselIndex].ai_evaluation && (
-                                    <div className={`space-y-3 border-t ${themeStyles.border} pt-4 mt-2`}>
-                                      <div className={`p-4 sm:p-5 rounded-2xl bg-white/40 dark:bg-slate-900/40 relative overflow-hidden group border border-slate-200/40 dark:border-white/5`}>
-                                        <div className={`absolute inset-0 bg-gradient-to-br to-transparent pointer-events-none ${
-                                          trades[carouselIndex].ai_evaluation.coach_title?.includes('RISK') ? 'from-rose-500/5' :
-                                          trades[carouselIndex].ai_evaluation.coach_title?.includes('GOOD') ? 'from-emerald-500/5' :
-                                          'from-amber-500/5'
-                                        }`} />
-                                        
-                                        <div className="relative z-10">
-                                          {trades[carouselIndex].ai_evaluation.coach_verdict ? (
-                                            <>
-                                              <div className="flex items-center gap-1.5 font-bold tracking-wider text-[11px] uppercase mb-3.5">
-                                                <Brain className={`w-4 h-4 opacity-80 ${
-                                                  trades[carouselIndex].ai_evaluation.coach_title?.includes('RISK') ? 'text-rose-500' :
-                                                  trades[carouselIndex].ai_evaluation.coach_title?.includes('GOOD') ? 'text-emerald-500' :
-                                                  'text-amber-500'
-                                                }`} />
-                                                <span className={`${
-                                                  trades[carouselIndex].ai_evaluation.coach_title?.includes('RISK') ? 'text-rose-600 dark:text-rose-400' :
-                                                  trades[carouselIndex].ai_evaluation.coach_title?.includes('GOOD') ? 'text-emerald-600 dark:text-emerald-400' :
-                                                  'text-amber-600 dark:text-amber-400'
-                                                }`}>AI Coach</span>
-                                              </div>
-                                              <div className="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300 space-y-2.5">
-                                                <p className="font-semibold text-[14px] text-slate-900 dark:text-slate-100">{trades[carouselIndex].ai_evaluation.coach_verdict}</p>
-                                                {trades[carouselIndex].ai_evaluation.coach_why && <p className="text-slate-600 dark:text-slate-400">{trades[carouselIndex].ai_evaluation.coach_why}</p>}
-                                                {trades[carouselIndex].ai_evaluation.coach_action && (
-                                                  <div className="pt-2 mt-2 border-t border-slate-200/50 dark:border-slate-700/50">
-                                                    <p className="whitespace-pre-line font-medium text-slate-700 dark:text-slate-300">{trades[carouselIndex].ai_evaluation.coach_action}</p>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </>
-                                          ) : trades[carouselIndex].ai_evaluation.coach_message ? (
-                                            <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
-                                              <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide flex items-center gap-1.5"><Brain className="w-4 h-4 opacity-80" /> AI COACH</span>
-                                              {trades[carouselIndex].ai_evaluation.coach_message}
-                                            </div>
-                                          ) : (
-                                            <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
-                                              <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide flex items-center gap-1.5"><Brain className="w-4 h-4 opacity-80" /> AI COACH</span>
-                                              {(trades[carouselIndex].ai_evaluation.strengths || []).map((s, i) => <span key={`s-${i}`} className="block mb-1.5"><span className="text-emerald-500 mr-1">✓</span>{s}</span>)}
-                                              {(trades[carouselIndex].ai_evaluation.weaknesses || []).map((w, i) => <span key={`w-${i}`} className="block mb-1.5"><span className="text-rose-500 mr-1">✗</span>{w}</span>)}
-                                              {trades[carouselIndex].ai_evaluation.advice && <span className="block mt-2 pt-2 border-t border-slate-200 dark:border-white/5 italic text-slate-600 dark:text-slate-400">{trades[carouselIndex].ai_evaluation.advice}</span>}
-                                            </div>
-                                          )}
-                                        </div>
-                                        
-                                        <details className="group/details relative z-10 mt-3 pt-3 border-t border-slate-200/50 dark:border-white/5">
-                                          <summary className="flex justify-between items-center cursor-pointer list-none text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-wider font-bold hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
-                                            <div className="flex items-center gap-1.5">
-                                              <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600"></span>
-                                              AI REVIEWED TRADE DATA
-                                            </div>
-                                            <div className="flex items-center gap-1 text-indigo-500">
-                                              <span className="group-open/details:hidden">Xem tại sao →</span>
-                                              <span className="hidden group-open/details:inline">Đóng lại</span>
-                                            </div>
-                                          </summary>
-                                          <div className="mt-3 text-xs space-y-3 font-mono text-slate-600 dark:text-slate-400 bg-white/50 dark:bg-black/20 p-3 rounded-lg border border-slate-200/50 dark:border-white/5">
-                                            <div className="grid grid-cols-2 gap-4">
-                                              <div>
-                                                <div className="font-bold mb-1.5 text-slate-700 dark:text-slate-300 uppercase text-[9px] tracking-wider">EVIDENCE</div>
-                                                <div className="space-y-1.5 text-[11px]">
-                                                  <div className="flex justify-between"><span>Entry</span><span className="text-slate-900 dark:text-white font-semibold">{trades[carouselIndex].entry_price || '—'}</span></div>
-                                                  <div className="flex justify-between"><span>Exit</span><span className="text-slate-900 dark:text-white font-semibold">{trades[carouselIndex].exit_price || '—'}</span></div>
-                                                  <div className="flex justify-between"><span>SL</span><span className="text-slate-900 dark:text-white font-semibold">{trades[carouselIndex].stop_loss || '—'}</span></div>
-                                                  <div className="flex justify-between"><span>Volume</span><span className="text-slate-900 dark:text-white font-semibold">{trades[carouselIndex].size || '—'}</span></div>
-                                                  <div className="flex justify-between pt-1 border-t border-slate-200/50 dark:border-white/10 mt-1">
-                                                    <span>P/L</span>
-                                                    <span className={`font-bold ${trades[carouselIndex].pnl >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
-                                                      {trades[carouselIndex].pnl >= 0 ? '+' : ''}{trades[carouselIndex].pnl}
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                              </div>
-                                              <div>
-                                                <div className="font-bold mb-1.5 text-slate-700 dark:text-slate-300 uppercase text-[9px] tracking-wider">WHY</div>
-                                                <div className="space-y-1.5 text-[10px]">
-                                                  {!trades[carouselIndex].stop_loss ? (
-                                                    <>
-                                                      <div className="text-rose-500 dark:text-rose-400">→ Không có SL</div>
-                                                      <div className="text-rose-500 dark:text-rose-400">→ Không xác định invalidation</div>
-                                                      <div className="text-rose-500 dark:text-rose-400">→ Risk trước entry không xác định</div>
-                                                      <div className="text-slate-500">→ Volume {trades[carouselIndex].size || '—'} không thể đánh giá risk</div>
-                                                    </>
-                                                  ) : (
-                                                    <>
-                                                      <div className="text-emerald-500 dark:text-emerald-400">→ Có Stop Loss rõ ràng</div>
-                                                      <div className="text-emerald-500 dark:text-emerald-400">→ Đã xác định điểm Invalidation</div>
-                                                      <div className="text-emerald-500 dark:text-emerald-400">→ Risk/Reward có thể ước tính trước</div>
-                                                    </>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </details>
-                                      </div>
-                                    </div>
-                                  )}
 
                               
               </div>
@@ -959,39 +1029,45 @@ export default function TradeCarouselModal() {
       )}
 
       {/* Hidden Chart Generator for this Modal */}
-      {tradeToGenerateImage && (
-        <HiddenChartGenerator 
-          trade={tradeToGenerateImage}
-          isBackground={true}
-          onComplete={async (urls, error) => {
-            setIsGeneratingImage(false);
-            if (urls && urls.length > 0) {
-              // The HiddenChartGenerator handles getting new URLs, but we need to append them to the existing ones
-              let existingImages = parseImageUrls(tradeToGenerateImage.image_url);
-              const combinedUrls = [...existingImages, ...urls];
-              
-              // Save it to db instantly
-              try {
-                const response = await fetch('/api/trades', {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ ...tradeToGenerateImage, image_url: JSON.stringify(combinedUrls) })
-                });
-                if (response.ok) {
-                  await fetchDashboardData(activeTab);
-                  setCarouselImageIndex(combinedUrls.length - 1);
+      {tradeToGenerateImage && (() => {
+        let existingImageCount = 0;
+        try {
+          existingImageCount = parseImageUrls(tradeToGenerateImage.image_url).length;
+        } catch(e) {}
+        
+        return (
+          <HiddenChartGenerator 
+            trade={tradeToGenerateImage}
+            existingImageCount={existingImageCount}
+            isBackground={true}
+            onComplete={async (urls, error) => {
+              setIsGeneratingImage(false);
+              if (urls && urls.length > 0) {
+                let existingImages = parseImageUrls(tradeToGenerateImage.image_url);
+                const combinedUrls = [...existingImages, ...urls];
+                
+                try {
+                  const response = await fetch('/api/trades', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...tradeToGenerateImage, image_url: JSON.stringify(combinedUrls) })
+                  });
+                  if (response.ok) {
+                    await fetchDashboardData(activeTab);
+                    setCarouselImageIndex(combinedUrls.length - 1);
+                  }
+                } catch (e) {
+                  console.error(e);
                 }
-              } catch (e) {
-                console.error(e);
+              } else if (error) {
+                console.error('Failed to generate image:', error);
               }
-            } else if (error) {
-              console.error('Failed to generate image:', error);
-            }
-            setTradeToGenerateImage(null);
-            hasTriggeredGenRef.current = false;
-          }}
-        />
-      )}
+              setTradeToGenerateImage(null);
+              hasTriggeredGenRef.current = false;
+            }}
+          />
+        );
+      })()}
     </>
   );
 }

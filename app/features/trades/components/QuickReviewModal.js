@@ -529,7 +529,7 @@ export default function QuickReviewModal({ zIndex = 100 }) {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md" style={{ zIndex }}>
-      <div className={`w-full max-w-6xl max-h-[90vh] flex flex-col rounded-2xl overflow-hidden shadow-2xl border ${isDark ? 'bg-[#131722] border-[#2a2e39] shadow-black/80' : 'bg-slate-50 border-white/50 shadow-gray-300/50'}`}>
+      <div className={`w-full max-w-[1400px] w-[95vw] max-h-[90vh] flex flex-col rounded-2xl overflow-hidden shadow-2xl border ${isDark ? 'bg-[#131722] border-[#2a2e39] shadow-black/80' : 'bg-slate-50 border-white/50 shadow-gray-300/50'}`}>
         
         {/* Header */}
         <div className={`flex items-center justify-between p-4 border-b ${isDark ? 'border-[#2a2e39] bg-[#1a1e29]' : 'border-gray-200/80 bg-white/60 backdrop-blur-md'}`}>
@@ -1416,10 +1416,20 @@ export default function QuickReviewModal({ zIndex = 100 }) {
       </div>
       
       {/* Hidden Chart Generator for this Modal */}
-      {tradeToGenerateImage && (
-        <HiddenChartGenerator 
-          trade={tradeToGenerateImage}
-          isBackground={true}
+      {tradeToGenerateImage && (() => {
+        let existingImageCount = 0;
+        try {
+          if (tradeToGenerateImage.image_url) {
+            const parsed = JSON.parse(tradeToGenerateImage.image_url);
+            existingImageCount = Array.isArray(parsed) ? parsed.length : 0;
+          }
+        } catch (e) {}
+        
+        return (
+          <HiddenChartGenerator 
+            trade={tradeToGenerateImage}
+            existingImageCount={existingImageCount}
+            isBackground={true}
           onComplete={async (urls, error) => {
             setIsGeneratingImage(false);
             if (urls && urls.length > 0) {
@@ -1440,7 +1450,8 @@ export default function QuickReviewModal({ zIndex = 100 }) {
             setTradeToGenerateImage(null);
           }}
         />
-      )}
+        );
+      })()}
     </div>
   );
 }

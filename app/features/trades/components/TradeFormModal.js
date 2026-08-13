@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Loader2, TrendingUp, AlertTriangle, BookOpen, DollarSign, Clock, Target, Tag, ArrowRightLeft, ChevronDown } from 'lucide-react';
+import { X, Loader2, TrendingUp, AlertTriangle, BookOpen, DollarSign, Clock, Target, Tag, ArrowRightLeft, ChevronDown, Bookmark } from 'lucide-react';
 import { useLanguageStore } from '@/app/core/i18n/store';
 import { useDashboardStore } from '@/app/features/dashboard/store/dashboardStore';
 // Convert local datetime-local string to UTC SQL string (YYYY-MM-DD HH:mm:ss)
@@ -95,7 +95,7 @@ const getInitialFormData = (tradeToEdit, accountTabs, activeTab) => {
     stop_loss: '',
     take_profit: '',
     size: lastSize,
-    trade_time: getLocalDatetimeLocalStr(),
+    trade_time: '',
     exit_time: '',
     pnl: '',
     risk_amount: '',
@@ -198,7 +198,7 @@ export default function TradeFormModal({ inline = false, onOpenScratchpad }) {
           ...getInitialFormData(null, accountTabs, activeTab),
           asset: formData.asset,
           size: formData.size,
-          trade_time: getLocalDatetimeLocalStr(),
+          trade_time: '',
         });
       } else {
         setError(result.error || t('errSaveFailed'));
@@ -235,14 +235,30 @@ export default function TradeFormModal({ inline = false, onOpenScratchpad }) {
             </div>
             {tradeToEdit ? `${t('editTradeTitle')} (1/2)` : `${t('newTradeTitle')} (1/2)`}
           </h2>
-          {!inline && (
+          <div className="relative z-10 flex items-center space-x-2 sm:space-x-3">
             <button
-              onClick={onClose}
-              className="relative z-10 p-2 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer"
+              type="button"
+              onClick={() => setFormData(p => ({ ...p, is_lesson: p.is_lesson ? 0 : 1 }))}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 transition-all cursor-pointer ${
+                formData.is_lesson 
+                  ? 'bg-amber-500/10 border-amber-500/50 text-amber-600 dark:text-amber-500' 
+                  : 'bg-slate-200/50 dark:bg-slate-800/50 border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+              title="Đánh dấu Bài học"
             >
-              <X className="w-4 h-4" />
+              <Bookmark size={16} strokeWidth={2.5} className={formData.is_lesson ? "fill-amber-500" : ""} />
+              <span className="text-sm font-bold hidden sm:inline">Bài học</span>
             </button>
-          )}
+            {!inline && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-2 hover:bg-slate-200 dark:hover:bg-white/10 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Form Body */}
@@ -345,7 +361,7 @@ export default function TradeFormModal({ inline = false, onOpenScratchpad }) {
                     <FormField
                       label={t('sizeLabel')} icon={TrendingUp} type="number" step="any" name="size"
                       value={formData.size} onChange={handleChange}
-                      placeholder="0.1" required min="0.00000001"
+                      placeholder="VD: 0.1 (Lot)" required min="0.00000001"
                     />
                   </div>
                 </div>
@@ -363,12 +379,12 @@ export default function TradeFormModal({ inline = false, onOpenScratchpad }) {
                     <FormField
                       label="Entry Price" type="number" step="any" name="entry_price"
                       value={formData.entry_price} onChange={handleChange}
-                      placeholder="0.00" required min="0"
+                      placeholder="Nhập giá vào lệnh (VD: 2000.5)" required min="0"
                     />
                     <FormField
                       label="Exit Price" type="number" step="any" name="exit_price"
                       value={formData.exit_price} onChange={handleChange}
-                      placeholder="0.00" required min="0"
+                      placeholder="Nhập giá đóng lệnh (VD: 2010.5)" required min="0"
                     />
                   </div>
 
@@ -397,12 +413,12 @@ export default function TradeFormModal({ inline = false, onOpenScratchpad }) {
                     <FormField
                       label="Stop Loss (SL)" type="number" step="any" name="stop_loss"
                       value={formData.stop_loss} onChange={handleChange}
-                      placeholder="Giá (VD: 2405.5)" min="0"
+                      placeholder="Giá cắt lỗ (VD: 1995.0)" min="0"
                     />
                     <FormField
                       label="Take Profit (TP)" type="number" step="any" name="take_profit"
                       value={formData.take_profit} onChange={handleChange}
-                      placeholder="Giá (VD: 2405.5)" min="0"
+                      placeholder="Giá chốt lời (VD: 2015.0)" min="0"
                     />
                   </div>
 
@@ -410,7 +426,7 @@ export default function TradeFormModal({ inline = false, onOpenScratchpad }) {
                     <FormField
                       label="Risk ($) - Rủi ro" icon={AlertTriangle} type="number" step="any" name="risk_amount"
                       value={formData.risk_amount} onChange={handleChange}
-                      placeholder="VD: 50"
+                      placeholder="Số tiền rủi ro (VD: 50)"
                       className="border-rose-500/30 focus:border-rose-500 text-rose-600 dark:text-rose-400 font-bold placeholder-slate-400 dark:placeholder-slate-500 text-lg"
                     />
                     <FormField

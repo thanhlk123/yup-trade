@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { 
   BookOpen, Layers, Activity, Target, AlertTriangle, 
   Image, BarChart2, ChevronUp, ChevronDown, Calendar, 
-  Zap, Sparkles, X, Brain 
+  Zap, Sparkles, X, Brain, Bookmark
 } from 'lucide-react';
 import { useLanguageStore } from '@/app/core/i18n/store';
 import { useThemeStore } from '@/app/core/theme/store';
 import { useDashboardStore } from '@/app/features/dashboard/store/dashboardStore';
 import { getTradeTypeBadge, isSymbolSupported } from '@/lib/tradeUtils';
+import { getHashtagInfo } from '@/lib/hashtags';
 
 export default function TradeList() {
   const t = useLanguageStore(state => state.t);
@@ -84,28 +85,34 @@ export default function TradeList() {
                 {/* History Journals */}
                 <div className={`rounded-3xl p-6 flex flex-col h-fit transition-colors duration-300 ${themeStyles.card}`}>
                   
-                  <div className={`flex justify-between items-center mb-6 pb-4 border-b ${themeStyles.border} flex-wrap gap-4`}>
-                    <h3 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 ${themeStyles.titleText}`}>
-                      📓 {t('tradeJournal')}
-                    </h3>
-                    <div className="flex items-center gap-2">
+                  <div className={`flex flex-col mb-6 pb-4 border-b ${themeStyles.border} gap-4`}>
+                    <div className="flex justify-between items-center">
+                      <h3 className={`text-sm font-bold uppercase tracking-wider flex items-center gap-2 shrink-0 ${themeStyles.titleText}`}>
+                        📓 {t('tradeJournal')}
+                      </h3>
+                      <span className={`text-xs font-mono px-2.5 py-1 rounded-lg border ${themeStyles.innerCard} ${themeStyles.titleText}`}>
+                        {t('countTrades', { count: trades.length })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar whitespace-nowrap pb-1">
                       {trades.length > 0 && (
                         <>
                           <button
                             onClick={() => setShowLessonsOnly(!showLessonsOnly)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer border ${
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 transition-all cursor-pointer shrink-0 ${
                               showLessonsOnly 
-                                ? 'bg-amber-500/10 border-amber-500/30 text-amber-500 dark:text-amber-400 font-extrabold' 
-                                : theme === 'light'
-                                  ? 'bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:bg-slate-50'
-                                  : `${themeStyles.innerCard} ${themeStyles.border} ${themeStyles.titleText} hover:opacity-80`
+                                ? 'bg-amber-500/10 border-amber-500/50 text-amber-600 dark:text-amber-500' 
+                                : theme === 'light' 
+                                  ? 'bg-slate-200/50 border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-200' 
+                                  : 'bg-slate-800/50 border-transparent text-slate-400 hover:text-slate-300 hover:bg-slate-800'
                             }`}
                           >
-                            <BookOpen className={`w-3.5 h-3.5 ${showLessonsOnly ? 'text-amber-400' : 'text-amber-500 dark:text-amber-400'}`} /> {showLessonsOnly ? t('filterLessonsOnly') : t('filterByLessons')}
+                            <Bookmark size={16} strokeWidth={2.5} className={showLessonsOnly ? "fill-amber-500" : ""} />
+                            <span className="text-sm font-bold">{showLessonsOnly ? t('filterLessonsOnly') : t('filterByLessons')}</span>
                           </button>
                           <button
                             onClick={() => setIsExportModalOpen(true)}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${themeStyles.innerCard} ${themeStyles.titleText} hover:opacity-80`}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer shrink-0 ${themeStyles.innerCard} ${themeStyles.titleText} hover:opacity-80`}
                           >
                             <BookOpen className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" /> {t('exportHtml')}
                           </button>
@@ -114,9 +121,9 @@ export default function TradeList() {
                               setCarouselIndex(0);
                               setIsCarouselOpen(true);
                             }}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${themeStyles.innerCard} ${themeStyles.titleText} hover:opacity-80`}
+                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer shrink-0 ${themeStyles.innerCard} ${themeStyles.titleText} hover:opacity-80`}
                           >
-                            <Layers className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" /> {t('quickView')}
+                            <Layers className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" /> Lướt Lệnh
                           </button>
                           <button
                             onClick={() => {
@@ -127,19 +134,16 @@ export default function TradeList() {
                                 alert('Tất cả lệnh đã được review đầy đủ!');
                               }
                             }}
-                            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-sm cursor-pointer shrink-0 ${
                               theme === 'light'
-                                ? 'bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100'
-                                : 'bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20'
+                                ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'
+                                : 'bg-indigo-600 text-white hover:bg-indigo-500'
                             }`}
                           >
-                            <Activity className="w-3.5 h-3.5" /> Duyệt nhanh ({trades.filter(t => !t.setup_tag || t.setup_tag === 'Unclassified' || !t.user_notes).length})
+                            <Activity className="w-3.5 h-3.5" /> Bổ sung dữ liệu ({trades.filter(t => !t.setup_tag || t.setup_tag === 'Unclassified' || !t.user_notes).length})
                           </button>
                         </>
                       )}
-                      <span className={`text-xs font-mono px-2.5 py-1 rounded-lg border ${themeStyles.innerCard} ${themeStyles.titleText}`}>
-                        {t('countTrades', { count: trades.length })}
-                      </span>
                     </div>
                   </div>
 
@@ -211,8 +215,8 @@ export default function TradeList() {
                               })()}
 
                               {trade.is_lesson === 1 && (
-                                <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1 shadow-sm shadow-amber-500/5">
-                                  <BookOpen className="w-3 h-3 text-amber-500" /> Bài Học
+                                <span className="px-1.5 py-1 rounded-md border bg-amber-500/10 border-amber-500/40 flex items-center justify-center opacity-75 hover:opacity-100 transition-opacity" title="Lệnh Bài Học">
+                                  <Bookmark size={14} strokeWidth={2} className="fill-amber-500 text-amber-500" />
                                 </span>
                               )}
 
@@ -220,7 +224,10 @@ export default function TradeList() {
                               <div>
                                 <h4 className={`font-extrabold text-base tracking-tight ${themeStyles.titleText}`}>{trade.asset}</h4>
                                 <span className={`text-xs font-medium ${themeStyles.subtext}`}>
-                                  Setup: {trade.setup_tag}
+                                  Setup: {(() => {
+                                    if (!trade.setup_tag || trade.setup_tag === 'Unclassified') return 'Unclassified';
+                                    return trade.setup_tag.replace(/#(Setup|Trigger|Mgmt|Emotion|Mistake|Trend|Exec|Grade|Risk|Exit)_/g, '');
+                                  })()}
                                 </span>
                               </div>
                             </div>
@@ -233,7 +240,15 @@ export default function TradeList() {
                                 const hasExit = trade.exit_price !== null && trade.exit_price !== undefined && !isNaN(parseFloat(trade.exit_price));
                                 const hasEntryTime = !!trade.trade_time;
                                 const hasExitTime = !!trade.exit_time;
-                                const imgUrls = trade.images ? String(trade.images).split(',').filter(Boolean) : [];
+                                let imgUrls = [];
+                                try {
+                                  if (trade.image_url) {
+                                    const parsed = JSON.parse(trade.image_url);
+                                    imgUrls = Array.isArray(parsed) ? parsed : [trade.image_url];
+                                  }
+                                } catch(e) {
+                                  if (trade.image_url) imgUrls = [trade.image_url];
+                                }
 
                                 const disabledReasons = [];
                                 if (!hasAsset) disabledReasons.push("Tài sản (Asset) đang trống");
@@ -246,6 +261,8 @@ export default function TradeList() {
                                 if (imgUrls.length >= 10) disabledReasons.push("Đạt giới hạn 10 ảnh");
 
                                 const isChartGenDisabled = disabledReasons.length > 0;
+
+                                if (imgUrls.length >= 10) return null;
 
                                 return (
                                   <div className="flex items-center gap-1">
@@ -298,14 +315,6 @@ export default function TradeList() {
                                 }`}>
                                   {isWin ? '+' : ''}{trade.pnl.toLocaleString()} USD
                                 </p>
-                                <div className={`flex flex-col items-end`}>
-                                  <span className={`text-[9px] font-mono ${themeStyles.subtext}`}>
-                                    Trade Quality: {ai?.decision_rating ? `${ai.decision_rating}/10` : '-'}
-                                  </span>
-                                  {ai?.decision_rating && ai.decision_rating <= 5 && (
-                                    <span className="text-rose-500 font-bold text-[10px] mt-0.5">🔴 Risk</span>
-                                  )}
-                                </div>
                               </div>
                               {isExpanded ? (
                                 <ChevronUp className={`w-4 h-4 ${themeStyles.subtext}`} />
@@ -320,7 +329,7 @@ export default function TradeList() {
                             <div className={`px-4 pb-4 border-t ${themeStyles.border} ${themeStyles.innerCard} text-xs space-y-4 pt-3.5 animate-slide-down`}>
                               
                               {/* Specific Metrics */}
-                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 rounded-xl bg-slate-50/70 dark:bg-slate-800/30 font-mono">
+                              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 p-3 rounded-xl bg-slate-50/70 dark:bg-slate-800/30 font-mono">
                                 <div>
                                   <span className={`block text-[9px] uppercase font-sans ${themeStyles.subtext}`}>Giá vào:</span>
                                   <span className={`text-xs font-semibold ${themeStyles.titleText}`}>{trade.entry_price}</span>
@@ -337,7 +346,190 @@ export default function TradeList() {
                                   <span className={`block text-[9px] uppercase font-sans ${themeStyles.subtext}`}>Volume:</span>
                                   <span className={`text-xs ${themeStyles.subtext}`}>{trade.size}</span>
                                 </div>
+                                <div>
+                                  <span className={`block text-[9px] uppercase font-sans ${themeStyles.subtext}`}>Chất Lượng:</span>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className={`text-xs font-semibold ${themeStyles.titleText}`}>
+                                      {ai?.decision_rating ? `${ai.decision_rating}/10` : '-'}
+                                    </span>
+                                    {ai?.decision_rating && ai.decision_rating <= 5 && (
+                                      <span className="text-rose-500 font-bold text-[10px]">🔴 Risk</span>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
+
+                                  {/* AI Coaching Feedbacks */}
+                                  {ai && (
+                                    <div className={`space-y-3 border-t ${themeStyles.border} pt-4 mt-2`}>
+                                      <div className={`p-4 sm:p-5 rounded-2xl bg-white/40 dark:bg-slate-900/40 relative overflow-hidden group border border-slate-200/40 dark:border-white/5`}>
+                                        <div className={`absolute inset-0 bg-gradient-to-br to-transparent pointer-events-none ${
+                                          ai.coach_title?.includes('RISK') ? 'from-rose-500/5' :
+                                          ai.coach_title?.includes('GOOD') ? 'from-emerald-500/5' :
+                                          'from-amber-500/5'
+                                        }`} />
+                                        
+                                        <div className="relative z-10">
+                                          {ai.summary || ai.diagnoses ? (
+                                            <div className="space-y-4">
+                                              <div className="flex items-center gap-1.5 font-bold tracking-wider text-[11px] uppercase mb-1">
+                                                <Brain className="w-4 h-4 opacity-80 text-indigo-500" />
+                                                <span className="text-indigo-600 dark:text-indigo-400">AI COACH</span>
+                                              </div>
+
+                                              {/* Summary Headline & Explanation */}
+                                              {ai.summary && (
+                                                <div className="space-y-1">
+                                                  <div className="font-semibold text-slate-800 dark:text-slate-200 text-[11.5px] leading-snug">{ai.summary.headline}</div>
+                                                  <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">{ai.summary.explanation}</p>
+                                                </div>
+                                              )}
+
+                                              {/* Diagnoses */}
+                                              {ai.diagnoses && ai.diagnoses.length > 0 && (
+                                                <div className="space-y-4 mt-4">
+                                                  {ai.diagnoses.length > 1 && <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3 border-t border-slate-200/50 dark:border-white/10 pt-4">TRADE DIAGNOSIS</div>}
+                                                  {ai.diagnoses.map((diag, i) => (
+                                                    <div key={`diag-${i}`} className="space-y-1">
+                                                      <div className={`font-semibold text-xs ${
+                                                        diag.severity === 'critical' ? 'text-rose-600 dark:text-rose-400' :
+                                                        diag.severity === 'warning' ? 'text-amber-600 dark:text-amber-400' :
+                                                        diag.severity === 'info' ? 'text-blue-600 dark:text-blue-400' :
+                                                        'text-slate-600 dark:text-slate-400'
+                                                      }`}>
+                                                        {diag.severity === 'critical' && '🔴'}
+                                                        {diag.severity === 'warning' && '🟠'}
+                                                        {diag.severity === 'info' && '🔵'} {diag.category}
+                                                      </div>
+                                                      {diag.title && <div className="text-[11.5px] font-medium text-slate-700 dark:text-slate-300 pl-5">{diag.title}</div>}
+                                                      <p className="text-[11px] text-slate-600 dark:text-slate-400 pl-5 leading-relaxed">{diag.explanation}</p>
+                                                    </div>
+                                                  ))}
+                                                </div>
+                                              )}
+
+                                              {/* Plan Deviation */}
+                                              {ai.planDeviation && ai.planDeviation.detected && (
+                                                <div className="space-y-0.5 mt-3">
+                                                  <div className="font-semibold text-xs text-amber-600 dark:text-amber-400">
+                                                    🟠 PLAN DEVIATION
+                                                  </div>
+                                                  <p className="text-[11px] text-amber-700/80 dark:text-amber-300/80 pl-5 leading-relaxed">{ai.planDeviation.explanation}</p>
+                                                </div>
+                                              )}
+
+                                              {/* Coaching */}
+                                              {ai.coaching && ai.coaching.length > 0 && (
+                                                <>
+                                                  <div className="border-t border-slate-200/50 dark:border-white/10 my-4"></div>
+                                                  <div>
+                                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">COACHING</div>
+                                                    <ul className="space-y-3 text-[11px] text-slate-700 dark:text-slate-300 list-decimal pl-4">
+                                                      {ai.coaching.map((c, i) => (
+                                                        <li key={`coach-${i}`} className="pl-1 leading-relaxed">{c}</li>
+                                                      ))}
+                                                    </ul>
+                                                  </div>
+                                                </>
+                                              )}
+
+                                              {/* Data Inconsistency */}
+                                              {ai.dataInconsistency && ai.dataInconsistency.detected && (
+                                                <>
+                                                  <div className="border-t border-rose-200/50 dark:border-rose-900/30 my-3"></div>
+                                                  <div className="bg-rose-50/50 dark:bg-rose-950/20 p-2.5 rounded-xl border border-rose-100 dark:border-rose-900/50">
+                                                    <div className="text-[10px] font-bold text-rose-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                                                      <AlertTriangle className="w-3.5 h-3.5" /> DATA INCONSISTENCY
+                                                    </div>
+                                                    <div className="text-rose-500/80 dark:text-rose-300/80 text-[11px] leading-relaxed">{ai.dataInconsistency.explanation}</div>
+                                                  </div>
+                                                </>
+                                              )}
+                                            </div>
+                                          ) : (
+
+                                            /* Legacy AI Format */
+                                            <>
+                                              {ai.coach_verdict ? (
+                                                <>
+                                                  <div className="flex items-center gap-1.5 font-bold tracking-wider text-[11px] uppercase mb-3.5">
+                                                    <Brain className={`w-4 h-4 opacity-80 ${
+                                                      ai.coach_title?.includes('RISK') ? 'text-rose-500' :
+                                                      ai.coach_title?.includes('GOOD') ? 'text-emerald-500' :
+                                                      'text-amber-500'
+                                                    }`} />
+                                                    <span className={`${
+                                                      ai.coach_title?.includes('RISK') ? 'text-rose-600 dark:text-rose-400' :
+                                                      ai.coach_title?.includes('GOOD') ? 'text-emerald-600 dark:text-emerald-400' :
+                                                      'text-amber-600 dark:text-amber-400'
+                                                    }`}>AI Coach</span>
+                                                  </div>
+                                                  <div className="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300 space-y-2.5">
+                                                    <p className="font-semibold text-[14px] text-slate-900 dark:text-slate-100">{ai.coach_verdict}</p>
+                                                    {ai.coach_why && <p className="text-slate-600 dark:text-slate-400">{ai.coach_why}</p>}
+                                                    {ai.coach_action && (
+                                                      <div className="pt-2 mt-2 border-t border-slate-200/50 dark:border-slate-700/50">
+                                                        <p className="whitespace-pre-line font-medium text-slate-700 dark:text-slate-300">{ai.coach_action}</p>
+                                                      </div>
+                                                    )}
+                                                  </div>
+                                                </>
+                                              ) : ai.coach_message ? (
+                                                <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
+                                                  <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide flex items-center gap-1.5"><Brain className="w-4 h-4 opacity-80" /> AI COACH</span>
+                                                  {ai.coach_message}
+                                                </div>
+                                              ) : (
+                                                <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
+                                                  <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide flex items-center gap-1.5"><Brain className="w-4 h-4 opacity-80" /> AI COACH</span>
+                                                  {(ai.strengths || []).map((s, i) => <span key={`s-${i}`} className="block mb-1.5"><span className="text-emerald-500 mr-1">✓</span>{s}</span>)}
+                                                  {(ai.weaknesses || []).map((w, i) => <span key={`w-${i}`} className="block mb-1.5"><span className="text-rose-500 mr-1">✗</span>{w}</span>)}
+                                                  {ai.advice && <span className="block mt-2 pt-2 border-t border-slate-200 dark:border-white/5 italic text-slate-600 dark:text-slate-400">{ai.advice}</span>}
+                                                </div>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                        
+                                        <details className="group/details relative z-10 mt-3 pt-3 border-t border-slate-200/50 dark:border-white/5">
+                                          <summary className="flex justify-between items-center cursor-pointer list-none text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-wider font-bold hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600"></span>
+                                              AI REVIEWED TRADE DATA
+                                            </div>
+                                            <div className="flex items-center gap-1 text-indigo-500">
+                                              <span className="group-open/details:hidden">Xem tại sao →</span>
+                                              <span className="hidden group-open/details:inline">Đóng lại</span>
+                                            </div>
+                                          </summary>
+                                          <div className="mt-3 text-xs space-y-3 text-slate-600 dark:text-slate-400 bg-slate-50/50 dark:bg-black/20 p-3.5 rounded-lg border border-slate-200/50 dark:border-white/5">
+                                            {ai.evidence && ai.evidence.length > 0 ? (
+                                              <div className="space-y-3">
+                                                <div className="grid grid-cols-[110px_1fr] gap-4 mb-1">
+                                                  <div className="font-bold text-slate-400 dark:text-slate-500 uppercase text-[9px] tracking-wider">EVIDENCE</div>
+                                                  <div className="font-bold text-slate-400 dark:text-slate-500 uppercase text-[9px] tracking-wider">WHY</div>
+                                                </div>
+                                                {ai.evidence.map((ev, i) => (
+                                                  <div key={`ev-${i}`} className="grid grid-cols-[110px_1fr] gap-4 text-[11px] items-start border-b border-slate-100 dark:border-slate-800/50 pb-3 last:border-0 last:pb-0">
+                                                    <div className="space-y-1">
+                                                      <div className="text-slate-500 dark:text-slate-400 leading-tight">{ev.field}</div>
+                                                      <div className="font-medium text-slate-700 dark:text-slate-200 leading-tight break-words">{ev.value}</div>
+                                                    </div>
+                                                    <div className="text-slate-600 dark:text-slate-300 leading-relaxed pt-[2px]">
+                                                      <span className="text-rose-400/80 dark:text-rose-500/80 mr-1.5 font-medium">→</span>
+                                                      {ev.reason}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <div className="text-center text-slate-400 italic py-2">Chưa có dữ liệu evidence từ AI</div>
+                                            )}
+                                          </div>
+                                        </details>
+                                      </div>
+                                    </div>
+                                  )}
 
                               {/* Trade Context & Execution Tags (User Inputs) */}
                               {(() => {
@@ -350,18 +542,34 @@ export default function TradeList() {
                                   return "text-slate-700 dark:text-slate-300 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-200/40 dark:border-slate-700/50";
                                 };
 
+                                const formatTag = (v) => {
+                                  if (!v) return '';
+                                  let str = v;
+                                  try {
+                                    const parsed = JSON.parse(v);
+                                    if (Array.isArray(parsed)) {
+                                      str = parsed.join(', ');
+                                    }
+                                  } catch (e) {}
+                                  str = str.replace(/#[a-zA-Z0-9]+_/g, '');
+                                  str = str.replace(/#/g, '');
+                                  return str.replace(/_/g, ' ');
+                                };
+
+
+
                                 const allTags = [
-                                  { label: 'Xu hướng', value: trade.market_trend, format: (v) => v.replace('#Trend_', '').replace(/_/g, ' ') },
-                                  { label: 'Khung lớn', value: trade.htf_context, format: (v) => v.replace(/_/g, ' ') },
-                                  { label: 'Vùng giá (POI)', value: trade.poi, format: (v) => v.replace(/_/g, ' ') },
-                                  { label: 'Hợp lưu', value: trade.confluences, format: (v) => v.replace(/_/g, ' ') },
-                                  { label: 'Kế hoạch Risk', value: trade.risk_plan, format: (v) => v.replace(/_/g, ' ') },
-                                  { label: 'Vào lệnh', value: trade.entry_trigger, format: (v) => v.replace('#Trigger_', '').replace(/_/g, ' ') },
-                                  { label: 'Chất lượng', value: trade.execution_quality, format: (v) => v.replace('#Exec_', '').replace(/_/g, ' ') },
-                                  { label: 'Quản lý', value: trade.trade_management, format: (v) => v.replace('#Mgmt_', '').replace(/_/g, ' ') },
-                                  { label: 'Lý do chốt', value: trade.exit_reason, format: (v) => v.replace(/_/g, ' ') },
-                                  { label: 'Tâm lý', value: trade.emotions, format: (v) => v.replace(/_/g, ' ') },
-                                  { label: 'Lỗi sai', value: trade.mistakes, format: (v) => v.replace(/_/g, ' ') }
+                                  { label: 'Xu hướng', value: trade.market_trend, format: (v) => formatTag(v) },
+                                  { label: 'Khung lớn', value: trade.htf_context, format: (v) => formatTag(v) },
+                                  { label: 'Vùng giá (POI)', value: trade.poi, format: (v) => formatTag(v) },
+                                  { label: 'Hợp lưu', value: trade.confluences, format: (v) => formatTag(v) },
+                                  { label: 'Kế hoạch Risk', value: trade.risk_plan, format: (v) => formatTag(v) },
+                                  { label: 'Vào lệnh', value: trade.entry_trigger, format: (v) => formatTag(v) },
+                                  { label: 'Chất lượng', value: trade.execution_quality, format: (v) => formatTag(v) },
+                                  { label: 'Quản lý', value: trade.trade_management, format: (v) => formatTag(v) },
+                                  { label: 'Lý do chốt', value: trade.exit_reason, format: (v) => formatTag(v) },
+                                  { label: 'Tâm lý', value: trade.emotions, format: (v) => formatTag(v) },
+                                  { label: 'Lỗi sai', value: trade.mistakes, format: (v) => formatTag(v) }
                                 ].filter(t => t.value);
 
                                 if (allTags.length === 0) return null;
@@ -457,109 +665,6 @@ export default function TradeList() {
                                 );
                               })()}
 
-                                  {/* AI Coaching Feedbacks */}
-                                  {ai && (
-                                    <div className={`space-y-3 border-t ${themeStyles.border} pt-4 mt-2`}>
-                                      <div className={`p-4 sm:p-5 rounded-2xl bg-white/40 dark:bg-slate-900/40 relative overflow-hidden group border border-slate-200/40 dark:border-white/5`}>
-                                        <div className={`absolute inset-0 bg-gradient-to-br to-transparent pointer-events-none ${
-                                          ai.coach_title?.includes('RISK') ? 'from-rose-500/5' :
-                                          ai.coach_title?.includes('GOOD') ? 'from-emerald-500/5' :
-                                          'from-amber-500/5'
-                                        }`} />
-                                        
-                                        <div className="relative z-10">
-                                          {ai.coach_verdict ? (
-                                            <>
-                                              <div className="flex items-center gap-1.5 font-bold tracking-wider text-[11px] uppercase mb-3.5">
-                                                <Brain className={`w-4 h-4 opacity-80 ${
-                                                  ai.coach_title?.includes('RISK') ? 'text-rose-500' :
-                                                  ai.coach_title?.includes('GOOD') ? 'text-emerald-500' :
-                                                  'text-amber-500'
-                                                }`} />
-                                                <span className={`${
-                                                  ai.coach_title?.includes('RISK') ? 'text-rose-600 dark:text-rose-400' :
-                                                  ai.coach_title?.includes('GOOD') ? 'text-emerald-600 dark:text-emerald-400' :
-                                                  'text-amber-600 dark:text-amber-400'
-                                                }`}>AI Coach</span>
-                                              </div>
-                                              <div className="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300 space-y-2.5">
-                                                <p className="font-semibold text-[14px] text-slate-900 dark:text-slate-100">{ai.coach_verdict}</p>
-                                                {ai.coach_why && <p className="text-slate-600 dark:text-slate-400">{ai.coach_why}</p>}
-                                                {ai.coach_action && (
-                                                  <div className="pt-2 mt-2 border-t border-slate-200/50 dark:border-slate-700/50">
-                                                    <p className="whitespace-pre-line font-medium text-slate-700 dark:text-slate-300">{ai.coach_action}</p>
-                                                  </div>
-                                                )}
-                                              </div>
-                                            </>
-                                          ) : ai.coach_message ? (
-                                            <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
-                                              <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide flex items-center gap-1.5"><Brain className="w-4 h-4 opacity-80" /> AI COACH</span>
-                                              {ai.coach_message}
-                                            </div>
-                                          ) : (
-                                            <div className="text-[13px] leading-relaxed whitespace-pre-wrap font-medium text-slate-700 dark:text-slate-300">
-                                              <span className="font-bold text-emerald-600 dark:text-emerald-400 block mb-2 tracking-wide flex items-center gap-1.5"><Brain className="w-4 h-4 opacity-80" /> AI COACH</span>
-                                              {(ai.strengths || []).map((s, i) => <span key={`s-${i}`} className="block mb-1.5"><span className="text-emerald-500 mr-1">✓</span>{s}</span>)}
-                                              {(ai.weaknesses || []).map((w, i) => <span key={`w-${i}`} className="block mb-1.5"><span className="text-rose-500 mr-1">✗</span>{w}</span>)}
-                                              {ai.advice && <span className="block mt-2 pt-2 border-t border-slate-200 dark:border-white/5 italic text-slate-600 dark:text-slate-400">{ai.advice}</span>}
-                                            </div>
-                                          )}
-                                        </div>
-                                        
-                                        <details className="group/details relative z-10 mt-3 pt-3 border-t border-slate-200/50 dark:border-white/5">
-                                          <summary className="flex justify-between items-center cursor-pointer list-none text-[10px] text-slate-500 dark:text-slate-500 uppercase tracking-wider font-bold hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
-                                            <div className="flex items-center gap-1.5">
-                                              <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600"></span>
-                                              AI REVIEWED TRADE DATA
-                                            </div>
-                                            <div className="flex items-center gap-1 text-indigo-500">
-                                              <span className="group-open/details:hidden">Xem tại sao →</span>
-                                              <span className="hidden group-open/details:inline">Đóng lại</span>
-                                            </div>
-                                          </summary>
-                                          <div className="mt-3 text-xs space-y-3 font-mono text-slate-600 dark:text-slate-400 bg-white/50 dark:bg-black/20 p-3 rounded-lg border border-slate-200/50 dark:border-white/5">
-                                            <div className="grid grid-cols-2 gap-4">
-                                              <div>
-                                                <div className="font-bold mb-1.5 text-slate-700 dark:text-slate-300 uppercase text-[9px] tracking-wider">EVIDENCE</div>
-                                                <div className="space-y-1.5 text-[11px]">
-                                                  <div className="flex justify-between"><span>Entry</span><span className="text-slate-900 dark:text-white font-semibold">{trade.entry_price || '—'}</span></div>
-                                                  <div className="flex justify-between"><span>Exit</span><span className="text-slate-900 dark:text-white font-semibold">{trade.exit_price || '—'}</span></div>
-                                                  <div className="flex justify-between"><span>SL</span><span className="text-slate-900 dark:text-white font-semibold">{trade.stop_loss || '—'}</span></div>
-                                                  <div className="flex justify-between"><span>Volume</span><span className="text-slate-900 dark:text-white font-semibold">{trade.size || '—'}</span></div>
-                                                  <div className="flex justify-between pt-1 border-t border-slate-200/50 dark:border-white/10 mt-1">
-                                                    <span>P/L</span>
-                                                    <span className={`font-bold ${trade.pnl >= 0 ? "text-emerald-500" : "text-rose-500"}`}>
-                                                      {trade.pnl >= 0 ? '+' : ''}{trade.pnl}
-                                                    </span>
-                                                  </div>
-                                                </div>
-                                              </div>
-                                              <div>
-                                                <div className="font-bold mb-1.5 text-slate-700 dark:text-slate-300 uppercase text-[9px] tracking-wider">WHY</div>
-                                                <div className="space-y-1.5 text-[10px]">
-                                                  {!trade.stop_loss ? (
-                                                    <>
-                                                      <div className="text-rose-500 dark:text-rose-400">→ Không có SL</div>
-                                                      <div className="text-rose-500 dark:text-rose-400">→ Không xác định invalidation</div>
-                                                      <div className="text-rose-500 dark:text-rose-400">→ Risk trước entry không xác định</div>
-                                                      <div className="text-slate-500">→ Volume {trade.size || '—'} không thể đánh giá risk</div>
-                                                    </>
-                                                  ) : (
-                                                    <>
-                                                      <div className="text-emerald-500 dark:text-emerald-400">→ Có Stop Loss rõ ràng</div>
-                                                      <div className="text-emerald-500 dark:text-emerald-400">→ Đã xác định điểm Invalidation</div>
-                                                      <div className="text-emerald-500 dark:text-emerald-400">→ Risk/Reward có thể ước tính trước</div>
-                                                    </>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </details>
-                                      </div>
-                                    </div>
-                                  )}
 
                               {/* Footer Timestamp & Actions */}
                               <div className="flex justify-between items-center text-[10px] text-slate-500 pt-2 border-t border-slate-800/40 mt-1 font-mono">

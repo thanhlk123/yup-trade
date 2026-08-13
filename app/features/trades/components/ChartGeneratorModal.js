@@ -12,17 +12,36 @@ export default function ChartGeneratorModal() {
 
   if (!tradeToGenerateImage) return null;
 
+  let existingImageCount = 0;
+  try {
+    if (tradeToGenerateImage.image_url) {
+      const parsed = JSON.parse(tradeToGenerateImage.image_url);
+      existingImageCount = Array.isArray(parsed) ? parsed.length : 0;
+    }
+  } catch (e) {}
+
   return (
     <HiddenChartGenerator 
       trade={tradeToGenerateImage}
+      existingImageCount={existingImageCount}
       isBackground={false}
       onComplete={async (urls, error) => {
         if (urls && urls.length > 0) {
           try {
+            let existingImages = [];
+            try {
+              if (tradeToGenerateImage.image_url) {
+                const parsed = JSON.parse(tradeToGenerateImage.image_url);
+                existingImages = Array.isArray(parsed) ? parsed : [];
+              }
+            } catch(e) {}
+            
+            const combinedUrls = [...existingImages, ...urls];
+            
             const res = await fetch('/api/trades', {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: tradeToGenerateImage.id, image_url: JSON.stringify(urls) })
+              body: JSON.stringify({ id: tradeToGenerateImage.id, image_url: JSON.stringify(combinedUrls) })
             });
             if (res.ok) {
                fetchDashboardData(activeTab);

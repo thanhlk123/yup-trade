@@ -128,7 +128,19 @@ export async function POST(request) {
       exit_time: exit_time || null,
       user_notes,
       trade_type: trade_type || 'LIVE',
-      image_url: image_url || null
+      image_url: image_url || null,
+      setup_tag: body.setup_tag,
+      market_trend,
+      htf_context,
+      poi,
+      confluences,
+      entry_trigger,
+      execution_quality,
+      risk_plan,
+      trade_management,
+      exit_reason,
+      emotions,
+      mistakes
     };
 
     // Analyze with AI Agent if not skipped
@@ -319,7 +331,19 @@ export async function PUT(request) {
       exit_time: exit_time || null,
       user_notes,
       trade_type: trade_type || 'LIVE',
-      image_url: image_url || null
+      image_url: image_url || null,
+      setup_tag,
+      market_trend,
+      htf_context,
+      poi,
+      confluences,
+      entry_trigger,
+      execution_quality,
+      risk_plan,
+      trade_management,
+      exit_reason,
+      emotions,
+      mistakes
     };
 
     let aiResult = body.ai_evaluation !== undefined ? body.ai_evaluation : existing.ai_evaluation;
