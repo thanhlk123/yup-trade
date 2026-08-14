@@ -9,6 +9,8 @@ import {
 import { useLanguageStore } from '@/app/core/i18n/store';
 import { useDashboardStore } from '@/app/features/dashboard/store/dashboardStore';
 import { runBehaviorEngine } from '@/lib/behaviorEngine';
+import { ReEntryDetail } from './ReEntryDetail';
+import { PositionSizingDetail } from './PositionSizingDetail';
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -133,12 +135,24 @@ function BehaviorDetailPanel({ behavior, trades, t, onClose, onFilterTrades }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          behaviorId: behavior.id,
-          behaviorName: t(behavior.nameKey) || behavior.nameKey,
-          occurrences: behavior.occurrences,
-          tradesData: affectedTrades,
-          behaviorEvidence: behavior.evidence || [],
-          dataQuality: behavior.dataQuality || 0
+          behavior: {
+            id: behavior.id,
+            name: t(behavior.nameKey) || behavior.nameKey,
+            severity: behavior.severity
+          },
+          summary: {
+            occurrences: behavior.occurrences,
+            affectedRatio: fmtPct(behavior.affectedRatio || 0),
+            impact_pnl: behavior.impact?.totalDamage,
+            winRate_vs_baseline: `${fmtPct(behavior.impact?.winrate || 0)} vs ${fmtPct((behavior.impact?.winrate || 0) + (behavior.impact?.winrateDrop || 0))}`,
+            trend: behavior.trend?.direction || 'N/A',
+            confidence: fmtPct(behavior.confidence || 0)
+          },
+          evidence: Array.isArray(behavior.evidence) ? { observed: behavior.evidence } : (behavior.evidence || {}),
+          trades: affectedTrades.slice(0, 5),
+          dataCoverage: behavior.dataQuality ?? null,
+          evidenceQuality: behavior.evidenceQuality ?? 'medium',
+          tradingMonths: behavior.trend?.months?.length ?? null,
         })
       });
       const data = await res.json();
@@ -201,7 +215,7 @@ function BehaviorDetailPanel({ behavior, trades, t, onClose, onFilterTrades }) {
         {/* Col 1: Impact / Metrics */}
         <div className="bg-slate-50 dark:bg-slate-950/50 rounded-xl p-4 border border-slate-100 dark:border-slate-800/60">
           <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-1.5">
-            <Activity className="w-3 h-3" /> {t('bhImpact')}
+            <Activity className="w-3 h-3" /> WHY IT MATTERS (Impact)
           </p>
           {isGood && metrics ? (
             <div className="space-y-3">
@@ -297,33 +311,46 @@ function BehaviorDetailPanel({ behavior, trades, t, onClose, onFilterTrades }) {
           <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-slate-800/50 flex-1">
             <div>
               <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1.5"><BrainCircuit className="w-3 h-3" /> {t('bhConfidenceLabel')}</span>
+                <span className="flex items-center gap-1.5"><BrainCircuit className="w-3 h-3" /> EVIDENCE</span>
                 <EvidenceBadge quality={evidenceQuality || 'medium'} />
               </p>
-              <ConfidenceBar value={confidence || 0} />
-              <p className="text-[9px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
-                Độ tin cậy của chẩn đoán dựa trên dữ liệu lệnh và đối chiếu chéo với nhật ký giao dịch.
-              </p>
-            </div>
-            
-            {coverage && coverage.total > 0 && (
-              <div className="bg-white dark:bg-slate-900/50 p-3 rounded-lg border border-slate-200 dark:border-slate-800/50 shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">GHI CHÚ XÁC THỰC</p>
-                  <span className="text-[10px] font-bold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-400/10 px-1.5 py-0.5 rounded">
-                    {Math.round((coverage.validated / coverage.total) * 100)}%
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="flex-1 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-violet-500 dark:bg-violet-400 rounded-full" style={{ width: `${(coverage.validated / coverage.total) * 100}%` }}></div>
+              
+              <div className="bg-white dark:bg-slate-900/50 p-3 rounded-lg border border-slate-200 dark:border-slate-800/50 shadow-sm mt-3 mb-4">
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                      <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                      Observed
+                    </span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      {behavior.evidence && !Array.isArray(behavior.evidence) ? behavior.evidence.observed?.length || 0 : 0} mục
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                      <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                      Declared
+                    </span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      {behavior.evidence && !Array.isArray(behavior.evidence) ? behavior.evidence.declared?.length || 0 : 0} mục
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      Derived
+                    </span>
+                    <span className="font-medium text-slate-700 dark:text-slate-200">
+                      {behavior.evidence && !Array.isArray(behavior.evidence) ? behavior.evidence.derived?.length || 0 : 0} mục
+                    </span>
                   </div>
                 </div>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2">
-                  Có <span className="font-bold text-slate-800 dark:text-slate-200">{coverage.validated}</span> / {coverage.total} lệnh được bạn tự ghi chú nhắc đến lỗi này.
-                </p>
               </div>
-            )}
+
+              <ConfidenceBar value={Math.round((confidence || 0) * 100)} />
+            </div>
+            
+
           </div>
         </div>
 
@@ -362,7 +389,7 @@ function BehaviorDetailPanel({ behavior, trades, t, onClose, onFilterTrades }) {
           <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/30 dark:to-purple-950/30 border border-indigo-100 dark:border-indigo-500/20 shadow-inner flex flex-col h-full">
             <div className="flex items-center justify-between mb-3">
               <p className="text-[10px] font-black text-indigo-500 dark:text-indigo-400 uppercase tracking-widest flex items-center gap-1.5">
-                <BrainCircuit className="w-4 h-4" /> AI Insights
+                <BrainCircuit className="w-4 h-4" /> BEHAVIOR INSIGHT
               </p>
               {!insight && !isLoadingInsight && !isGood && (
                 <button
@@ -391,6 +418,63 @@ function BehaviorDetailPanel({ behavior, trades, t, onClose, onFilterTrades }) {
           </div>
         </div>
       </div>
+
+      {/* Full Width 'Why detected?' Section */}
+      {behavior.evidence && !Array.isArray(behavior.evidence) && (
+        <div className="mt-6 bg-slate-50 dark:bg-slate-950/50 rounded-xl p-5 border border-slate-100 dark:border-slate-800/60">
+          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-1.5">
+            <BrainCircuit className="w-3.5 h-3.5" /> CHI TIẾT BẰNG CHỨNG PHÂN TÍCH (WHY DETECTED?)
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+            {behavior.evidence.observed?.length > 0 && (
+              <div>
+                <span className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                  Bằng chứng Dữ liệu (Observed)
+                </span>
+                <ul className="text-[12px] text-slate-600 dark:text-slate-400 list-disc pl-4 space-y-2">
+                  {behavior.evidence.observed.map((e, i) => <li key={`obs-${i}`} className="leading-relaxed">{e}</li>)}
+                </ul>
+              </div>
+            )}
+            {behavior.evidence.derived?.length > 0 && (
+              <div>
+                <span className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                  Phân tích Thống kê (Derived)
+                </span>
+                <ul className="text-[12px] text-slate-600 dark:text-slate-400 list-disc pl-4 space-y-2">
+                  {behavior.evidence.derived.map((e, i) => <li key={`der-${i}`} className="leading-relaxed">{e}</li>)}
+                </ul>
+              </div>
+            )}
+            {behavior.evidence.declared?.length > 0 && (
+              <div className="md:col-span-2">
+                <span className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">
+                  <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                  Tự Khai báo (Declared)
+                </span>
+                <ul className="text-[12px] text-slate-600 dark:text-slate-400 list-disc pl-4 space-y-2">
+                  {behavior.evidence.declared.map((e, i) => <li key={`dec-${i}`} className="leading-relaxed">{e}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* V1 backward compatibility */}
+      {Array.isArray(behavior.evidence) && behavior.evidence.length > 0 && (
+        <div className="mt-6 bg-slate-50 dark:bg-slate-950/50 rounded-xl p-5 border border-slate-100 dark:border-slate-800/60">
+          <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-1.5">
+            <BrainCircuit className="w-3.5 h-3.5" /> WHY DETECTED?
+          </p>
+          <ul className="text-[12px] text-slate-600 dark:text-slate-400 list-disc pl-4 space-y-2">
+            {behavior.evidence.slice(0, 3).map((e, i) => <li key={`v1-${i}`} className="leading-relaxed">{e}</li>)}
+          </ul>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -429,13 +513,11 @@ function BadBehaviorRow({ behavior, rank, isActive, onClick, t }) {
             const occ = behavior.occurrences;
             const trades = behavior.affectedTradeIds?.length || occ;
             const cat = behavior.category;
-            // Sequence behaviors: occurrences = events (days/pairs), trades = individual trades
-            if (cat === 'sequence' && occ !== trades) {
-              const label = behavior.id === 'overtrading' ? 'ngày' : behavior.id === 'revenge_trading' ? 'lần' : 'chuỗi';
-              return `${occ} ${label} · ${trades} lệnh · conf ${behavior.confidence}%`;
+            if (cat === 'sequence') {
+              const label = trades === occ ? 'lệnh' : 'lần';
+              return `${occ} ${label} · ${trades} lệnh · Confidence: ${Math.round((behavior.confidence || 0) * 100)}%`;
             }
-            // 1:1 behaviors: occurrences = trades
-            return `${occ} ${t('bhOccurrences')} · conf ${behavior.confidence}%`;
+            return `${occ} ${t('bhOccurrences')} · Confidence: ${Math.round((behavior.confidence || 0) * 100)}%`;
           })()}
         </p>
       </div>
@@ -505,9 +587,8 @@ export default function BehaviorIntelligence() {
   };
   const [selectedId, setSelectedId] = useState(null);
 
-  const { bad, good, dataQuality } = useMemo(() => {
+  const { bad, good, dataQuality, dataCoverage } = useMemo(() => {
     const res = runBehaviorEngine(trades || []);
-    // Inject dataQuality into each item for the AI prompt
     res.bad.forEach(b => b.dataQuality = res.dataQuality);
     res.good.forEach(b => b.dataQuality = res.dataQuality);
     return res;
@@ -537,6 +618,27 @@ export default function BehaviorIntelligence() {
           <span className="px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-500/15 border border-violet-200 dark:border-violet-500/30 text-[10px] text-violet-600 dark:text-violet-400 font-bold uppercase">
             {t('bhEngineLabel')}
           </span>
+          {dataCoverage != null && (
+            <div className="group relative flex items-center">
+              <span 
+                className={`px-2.5 py-1 rounded-full border text-[10px] font-bold uppercase cursor-help ${
+                  dataCoverage >= 0.7 
+                    ? 'bg-emerald-100 dark:bg-emerald-500/15 border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                    : dataCoverage >= 0.4
+                    ? 'bg-amber-100 dark:bg-amber-500/15 border-amber-200 dark:border-amber-500/30 text-amber-600 dark:text-amber-400'
+                    : 'bg-rose-100 dark:bg-rose-500/15 border-rose-200 dark:border-rose-500/30 text-rose-500 dark:text-rose-400'
+                }`}
+              >
+                DATA COVERAGE {Math.round(dataCoverage * 100)}%
+              </span>
+              <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-[180px] p-2 bg-slate-800 dark:bg-slate-700 rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50 pointer-events-none">
+                <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-slate-800 dark:bg-slate-700 rotate-45 rounded-[2px]" />
+                <p className="relative z-10 !text-white text-[11px] font-medium leading-relaxed text-center normal-case m-0">
+                  {Math.round(dataCoverage * 100)}% lệnh có đủ context để phân tích sâu
+                </p>
+              </div>
+            </div>
+          )}
         </div>
         {selectedId && (
           <button
@@ -604,7 +706,19 @@ export default function BehaviorIntelligence() {
       </div>
 
       {/* Detail Panel */}
-      {selectedBehavior && (
+      {selectedBehavior && selectedBehavior.id === 'compulsive_re_entry' ? (
+        <ReEntryDetail
+          behavior={selectedBehavior}
+          onFilterTrades={handleFilterTrades}
+          t={t}
+        />
+      ) : selectedBehavior && selectedBehavior.id === 'oversized' ? (
+        <PositionSizingDetail
+          behavior={selectedBehavior}
+          onFilterTrades={handleFilterTrades}
+          t={t}
+        />
+      ) : selectedBehavior ? (
         <BehaviorDetailPanel
           behavior={selectedBehavior}
           trades={trades}
@@ -612,7 +726,7 @@ export default function BehaviorIntelligence() {
           onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}
           onFilterTrades={handleFilterTrades}
         />
-      )}
+      ) : null}
     </div>
   );
 }

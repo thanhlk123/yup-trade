@@ -326,7 +326,7 @@ export default function TradeList() {
 
                           {/* Expanded Details */}
                           {isExpanded && (
-                            <div className={`px-4 pb-4 border-t ${themeStyles.border} ${themeStyles.innerCard} text-xs space-y-4 pt-3.5 animate-slide-down`}>
+                            <div className={`px-4 pb-4 border-t ${themeStyles.border} ${themeStyles.innerCard} text-xs space-y-4 pt-3.5 animate-slide-down overflow-hidden`}>
                               
                               {/* Specific Metrics */}
                               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 p-3 rounded-xl bg-slate-50/70 dark:bg-slate-800/30 font-mono">

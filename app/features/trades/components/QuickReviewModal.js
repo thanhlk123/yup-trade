@@ -1052,7 +1052,7 @@ export default function QuickReviewModal({ zIndex = 100 }) {
                 
                 {/* Emotions & Mistakes */}
                 {renderMultiSelectCustomPills('Tâm lý giao dịch (Emotions)', '+', 'emotions', 'emotions', ['#Emotion_Confident', '#Emotion_FOMO', '#Emotion_Revenge', '#Emotion_Impatient', '#Emotion_Bored'])}
-                {renderMultiSelectCustomPills('Sai lầm (Mistakes)', '+', 'mistakes', 'mistakes', ['#Mistake_Moved SL', '#Mistake_Closed early', '#Mistake_Averaging down', '#Mistake_Counter trend', '#Mistake_Over leveraged'])}
+                {renderMultiSelectCustomPills('Sai lầm (Mistakes)', '+', 'mistakes', 'mistakes', ['#Mistake_MovedSL', '#Mistake_EarlyExit', '#Mistake_CounterTrend'])}
 
                 {/* HTF Context */}
                 <div className={`space-y-3 ${getCardStyle(isDark)}`}>

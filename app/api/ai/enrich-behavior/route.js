@@ -1,14 +1,25 @@
 import { NextResponse } from 'next/server';
-import { getGeminiModels } from '@/lib/ai-agent';
+import { getGeminiModels, cleanObject } from '@/lib/ai-agent';
 
-export const maxDuration = 60; // Allow more time for AI processing
+export const maxDuration = 60; 
 
 export async function POST(request) {
   try {
-    const { behaviorId, behaviorName, occurrences, tradesData, behaviorEvidence, dataQuality } = await request.json();
+    const payload = await request.json();
+    
+    // V2 Payload structure
+    const { 
+      behavior,
+      summary,
+      evidence,
+      trades,
+      dataCoverage,
+      evidenceQuality,
+      tradingMonths
+    } = payload;
 
-    if (!tradesData || !tradesData.length) {
-      return NextResponse.json({ error: 'No trades data provided' }, { status: 400 });
+    if (!behavior || !behavior.id) {
+      return NextResponse.json({ error: 'Thiếu thông tin Behavior V2' }, { status: 400 });
     }
 
     const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
@@ -16,36 +27,61 @@ export async function POST(request) {
       return NextResponse.json({ error: 'Thiếu API Key của Gemini.' }, { status: 500 });
     }
 
-    // Prepare compact data for prompt to save tokens
-    const compactTrades = tradesData.map(t => ({
-      date: t.trade_time,
-      asset: t.asset,
-      pnl: t.pnl,
-      size: t.size,
-      notes: t.user_notes,
-      tags: t.setup_tag
-    }));
+    // Clean empty fields from representative trades to save tokens
+    const cleanedTrades = (trades || []).map(t => cleanObject(t));
+
+    // Compute data coverage context for AI tone calibration
+    const coveragePct = dataCoverage != null ? Math.round(dataCoverage * 100) : null;
+    const coverageNote = coveragePct != null
+      ? coveragePct >= 70
+        ? `Dữ liệu đầy đủ (${coveragePct}% trường được điền) — phân tích có độ tin cậy cao.`
+        : coveragePct >= 40
+          ? `Dữ liệu trung bình (${coveragePct}% trường được điền) — một số nhận định có thể chưa hoàn toàn chính xác.`
+          : `Dữ liệu thưa (${coveragePct}% trường được điền) — hãy thận trọng với kết luận, cần thêm dữ liệu.`
+      : '';
 
     const prompt = `
-Bạn là chuyên gia phân tích dữ liệu giao dịch (Data Scientist & Trading Analyst).
-Hệ thống Rule Engine (Deterministic Layer) vừa quét qua tập dữ liệu và KẾT LUẬN phát hiện ra lỗi hành vi: "${behaviorName}" (ID: ${behaviorId}).
-Lỗi này xảy ra ${occurrences} lần.
-Điểm chất lượng dữ liệu (Data Quality Score): ${dataQuality ? (dataQuality * 100).toFixed(0) : 'Chưa xác định'}%.
-Bằng chứng (Evidence): ${behaviorEvidence ? behaviorEvidence.join(' | ') : 'Phân tích từ dữ liệu lịch sử.'}
+Bạn là một AI Trading Coach (Huấn luyện viên giao dịch).
+Hệ thống Behavior Engine đã phân tích lịch sử giao dịch và tìm ra một Pattern (Mẫu hành vi) quan trọng.
 
-BẠN ĐANG Ở TẦNG ENRICHMENT. BẠN BỊ NGHIÊM CẤM TẠO RA LỖI MỚI HOẶC TỰ KẾT LUẬN LỖI. 
-Nhiệm vụ của bạn là TÓM TẮT & TÌM SỰ TƯƠNG QUAN (Correlate) dựa trên kết luận có sẵn của Rule Engine.
+--- THÔNG TIN BEHAVIOR PATTERN ---
+Tên lỗi: ${behavior.name} (ID: ${behavior.id} | Mức độ nghiêm trọng: ${behavior.severity || 'Medium'})
+Thống kê:
+- Tần suất: ${summary?.occurrences || 0} lệnh (${summary?.affectedRatio || 'N/A'} tổng số lệnh)
+- Tác động PnL: $${summary?.impact_pnl || 0}
+- Winrate khi dính lỗi này: ${summary?.winRate_vs_baseline || 'N/A'}
+- Xu hướng hiện tại: ${summary?.trend || 'Không rõ'}
+- Độ tự tin của dữ liệu (Data Confidence): ${summary?.confidence || 'N/A'}
+${tradingMonths ? `- Dữ liệu trải dài: ${tradingMonths} tháng giao dịch` : ''}
 
-Chỉ trả lời NGẮN GỌN (tối đa 4-5 dòng) tập trung vào các insight:
-- Bạn thấy gì từ các bằng chứng (Evidence) và điểm chất lượng dữ liệu?
-- Lỗi này thường xảy ra ở hoàn cảnh nào dựa trên tập lệnh? (ví dụ: đánh cặp vàng, phiên Á, sau khi thua...)
-- Hậu quả (Impact) lớn nhất từ tập lệnh này là gì?
-- 1 Lời khuyên hành động (Actionable advice) cụ thể để khắc phục.
+--- CHẤT LƯỢNG DỮ LIỆU ---
+${coverageNote || 'Không có thông tin về mức độ đầy đủ dữ liệu.'}
+Chất lượng bằng chứng (Evidence Quality): ${evidenceQuality || 'medium'}
 
-Dữ liệu lệnh liên quan (JSON):
-${JSON.stringify(compactTrades, null, 2)}
+--- BẰNG CHỨNG (EVIDENCE) ---
+[Quan sát hệ thống đo được - Observed]
+${evidence?.observed?.length > 0 ? evidence.observed.map(e => '- ' + e).join('\n') : 'Không có'}
 
-Trả về BẰNG TIẾNG VIỆT, định dạng plain text ngắn gọn, dùng gạch đầu dòng rõ ràng. KHÔNG ĐƯỢC TRẢ VỀ JSON, trả về nguyên văn text insight để hiển thị trực tiếp lên UI.
+[Người dùng tự khai báo - Declared]
+${evidence?.declared?.length > 0 ? evidence.declared.map(e => '- ' + e).join('\n') : 'Không có'}
+
+[Suy luận tương quan - Derived]
+${evidence?.derived?.length > 0 ? evidence.derived.map(e => '- ' + e).join('\n') : 'Không có'}
+
+--- VÍ DỤ TIÊU BIỂU ---
+${JSON.stringify(cleanedTrades, null, 2)}
+
+--- YÊU CẦU CHO AI COACH ---
+BẠN BỊ CẤM "ĐOÁN" LỖI. Rule Engine đã xác định lỗi. Việc của bạn là CHUYỂN HOÁ DỮ LIỆU NÀY THÀNH LỜI KHUYÊN (COACHING).
+Không lặp lại những con số thống kê một cách máy móc, hãy tập trung vào Insights và Action.
+${coveragePct != null && coveragePct < 40 ? 'Dữ liệu thưa — hãy đưa ra lời khuyên thận trọng hơn, tập trung vào nguyên tắc tổng quát thay vì kết luận cụ thể.' : ''}
+
+Hãy trả về phản hồi theo định dạng sau, KHÔNG dùng Markdown heading (#) mà dùng BOLD (**):
+
+**WHAT TO CHANGE (AI COACHING)**
+(Viết 1 đoạn ngắn 2-3 câu giải thích tại sao chuỗi hành vi này nguy hiểm dựa trên dữ liệu tương quan. Ví dụ: "Dữ liệu cho thấy mỗi khi bạn FOMO, bạn có xu hướng vi phạm Risk Plan và chốt tay sớm...")
+
+(Sau đó cung cấp 1 Checklist hành động gồm 3 bước cụ thể để người dùng khắc phục lỗi này trước khi vào lệnh tiếp theo. Dùng checkbox icon ✅)
 `;
 
     const models = getGeminiModels();
@@ -59,7 +95,7 @@ Trả về BẰNG TIẾNG VIỆT, định dạng plain text ngắn gọn, dùng 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { temperature: 0.3, maxOutputTokens: 500 }
+            generationConfig: { temperature: 0.3, maxOutputTokens: 600 }
           })
         });
 
