@@ -11,6 +11,10 @@ import { useDashboardStore } from '@/app/features/dashboard/store/dashboardStore
 import { runBehaviorEngine } from '@/lib/behaviorEngine';
 import { ReEntryDetail } from './ReEntryDetail';
 import { PositionSizingDetail } from './PositionSizingDetail';
+import { NoTpDetail } from './NoTpDetail';
+import { NoSlDetail } from './NoSlDetail';
+import { RevengeDetail } from './RevengeDetail';
+import { MartingaleDetail } from './MartingaleDetail';
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -338,10 +342,10 @@ function BehaviorDetailPanel({ behavior, trades, t, onClose, onFilterTrades }) {
                   <div className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-2 text-slate-600 dark:text-slate-300">
                       <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                      Derived
+                      Context
                     </span>
                     <span className="font-medium text-slate-700 dark:text-slate-200">
-                      {behavior.evidence && !Array.isArray(behavior.evidence) ? behavior.evidence.derived?.length || 0 : 0} mục
+                      {behavior.evidence && !Array.isArray(behavior.evidence) ? behavior.evidence.context?.length || 0 : 0} mục
                     </span>
                   </div>
                 </div>
@@ -437,14 +441,14 @@ function BehaviorDetailPanel({ behavior, trades, t, onClose, onFilterTrades }) {
                 </ul>
               </div>
             )}
-            {behavior.evidence.derived?.length > 0 && (
+            {behavior.evidence.context?.length > 0 && (
               <div>
                 <span className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 mb-2">
                   <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                  Phân tích Thống kê (Derived)
+                  Bối cảnh dữ liệu (Context)
                 </span>
                 <ul className="text-[12px] text-slate-600 dark:text-slate-400 list-disc pl-4 space-y-2">
-                  {behavior.evidence.derived.map((e, i) => <li key={`der-${i}`} className="leading-relaxed">{e}</li>)}
+                  {behavior.evidence.context.map((e, i) => <li key={`ctx-${i}`} className="leading-relaxed">{e}</li>)}
                 </ul>
               </div>
             )}
@@ -717,6 +721,38 @@ export default function BehaviorIntelligence() {
           behavior={selectedBehavior}
           onFilterTrades={handleFilterTrades}
           t={t}
+        />
+      ) : selectedBehavior && selectedBehavior.id === 'no_tp' ? (
+        <NoTpDetail
+          behavior={selectedBehavior}
+          onFilterTrades={handleFilterTrades}
+          onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}
+          t={t}
+          trades={trades}
+        />
+      ) : selectedBehavior && selectedBehavior.id === 'no_sl' ? (
+        <NoSlDetail
+          behavior={selectedBehavior}
+          onFilterTrades={handleFilterTrades}
+          onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}
+          t={t}
+          trades={trades}
+        />
+      ) : selectedBehavior && selectedBehavior.id === 'revenge_trading' ? (
+        <RevengeDetail
+          behavior={selectedBehavior}
+          onFilterTrades={handleFilterTrades}
+          onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}
+          t={t}
+          trades={trades}
+        />
+      ) : selectedBehavior && selectedBehavior.id === 'martingale' ? (
+        <MartingaleDetail
+          behavior={selectedBehavior}
+          onFilterTrades={handleFilterTrades}
+          onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}
+          t={t}
+          trades={trades}
         />
       ) : selectedBehavior ? (
         <BehaviorDetailPanel
