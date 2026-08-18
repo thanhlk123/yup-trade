@@ -1,282 +1,414 @@
-import React from 'react';
-import { Target, TrendingDown, Filter, X, ShieldAlert, Lightbulb, Zap, Search, AlertCircle, BrainCircuit } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Target, X, AlertTriangle, Crosshair, BarChart3, Activity, Info, Quote } from 'lucide-react';
+import { getTradeMetrics, extractBaselineLosses } from '../../../../lib/behaviors/execution/noSl';
 
 function fmt$(n) {
   if (!n && n !== 0) return '$0';
   const abs = Math.abs(n);
-  const sign = n < 0 ? '-' : '+';
-  if (abs >= 1000) return sign + '$' + (abs / 1000).toFixed(1) + 'k';
-  return sign + '$' + abs.toFixed(1);
+  if (abs >= 1000) return '$' + (abs / 1000).toFixed(1) + 'k';
+  return '$' + abs.toFixed(0);
+}
+
+function formatDuration(start, end) {
+  if (!start || !end) return '-';
+  const ms = new Date(end) - new Date(start);
+  if (ms < 0) return '-';
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h${mins % 60}m`;
+  return `${Math.floor(hrs / 24)}d`;
 }
 
 export function NoSlDetail({ behavior, onFilterTrades, onClose, trades, t }) {
-  const { affectedTradeIds, impact, severity, category, evidence } = behavior;
-  const totalTrades = trades?.length || 1;
-  const violationCount = affectedTradeIds?.length || behavior.occurrences || 0;
-  const violationPct = Math.round((violationCount / totalTrades) * 100);
-  const damage = impact?.totalDamage || 0;
+  const { affectedTradeIds } = behavior;
+  
+  const metrics = useMemo(() => {
+    const allTrades = trades || [];
+    const totalTrades = allTrades.length;
+    
+    // Affected trades (NoSL)
+    const noSlTrades = allTrades.filter(tr => affectedTradeIds.includes(tr.id));
+    const noSlCount = noSlTrades.length;
+    const noSlRatio = totalTrades > 0 ? (noSlCount / totalTrades) * 100 : 0;
+    
+    const noSlLosses = noSlTrades.filter(tr => parseFloat(tr.pnl) < 0).map(tr => ({
+       ...tr, 
+       realizedLossPerSize: getTradeMetrics(tr).realizedLossPerSize,
+       realizedLossUsd: getTradeMetrics(tr).realizedLossUsd,
+       durationStr: formatDuration(tr.trade_time, tr.exit_time)
+    }));
+    
+    noSlLosses.sort((a, b) => b.realizedLossPerSize - a.realizedLossPerSize); 
+    const totalNoSlLossUsd = noSlLosses.reduce((sum, tr) => sum + tr.realizedLossUsd, 0);
+    const lossRate = noSlCount > 0 ? (noSlLosses.length / noSlCount) * 100 : 0;
 
-  // Trend for the bar chart
-  const trend = behavior.trend || {};
-  const trendMonths = trend.months || [];
-  const trendVals = trendMonths.map(m => trend.monthly[m] || 0);
-  const maxTrend = Math.max(...trendVals, 1);
+    // Baseline trades (With SL)
+    const slLosses = extractBaselineLosses(allTrades);
 
-  // Evidence extraction
-  const evObserved = evidence?.observed || [];
-  const evDeclared = evidence?.declared || [];
-  const evContext = evidence?.context || [];
+    const ascendingNoSlLosses = [...noSlLosses].map(tr => tr.realizedLossPerSize).sort((a,b) => a - b);
+    
+    // Medians
+    const medianSl = slLosses.length > 0 ? slLosses[Math.floor(slLosses.length / 2)] : 0;
+    const medianNoSl = ascendingNoSlLosses.length > 0 ? ascendingNoSlLosses[Math.floor(ascendingNoSlLosses.length / 2)] : 0;
+    const medianMultiplier = medianSl > 0 ? medianNoSl / medianSl : 1;
+    const medianPct = medianSl > 0 ? ((medianNoSl / medianSl) - 1) * 100 : 0;
+
+    // P90
+    const p90IdxSl = Math.floor((slLosses.length - 1) * 0.9);
+    const p90Sl = slLosses.length > 0 && p90IdxSl >= 0 ? slLosses[p90IdxSl] : 0;
+    const p90IdxNoSl = Math.floor((ascendingNoSlLosses.length - 1) * 0.9);
+    const p90NoSl = ascendingNoSlLosses.length > 0 && p90IdxNoSl >= 0 ? ascendingNoSlLosses[p90IdxNoSl] : 0;
+    const p90Pct = p90Sl > 0 ? ((p90NoSl / p90Sl) - 1) * 100 : 0;
+
+    // Max
+    const maxSl = slLosses.length > 0 ? slLosses[slLosses.length - 1] : 0;
+    const maxNoSl = ascendingNoSlLosses.length > 0 ? ascendingNoSlLosses[ascendingNoSlLosses.length - 1] : 0;
+    const maxPct = maxSl > 0 ? ((maxNoSl / maxSl) - 1) * 100 : 0;
+    const maxMultiplier = medianSl > 0 ? maxNoSl / medianSl : 1; 
+
+    // Top 3 Damage Concentration
+    const top3 = noSlLosses.slice(0, 3);
+    const top4 = noSlLosses.slice(0, 4);
+    const top4Damage = top4.reduce((sum, tr) => sum + tr.realizedLossUsd, 0);
+    const concentrationPct = totalNoSlLossUsd > 0 ? (top4Damage / totalNoSlLossUsd) * 100 : 0;
+
+    // Fingerprint
+    const fingerprint = {
+      riskPlan: { Violated: 0, Followed: 0 },
+      emotion: { Hope: 0, Fear: 0, Neutral: 0 },
+      direction: { BUY: 0, SELL: 0 },
+      session: { Asia: 0, London: 0, 'New York': 0 }
+    };
+
+    noSlTrades.forEach(tr => {
+       if (tr.risk_plan === 'Violated' || tr.risk_plan === '#Risk_Violated') fingerprint.riskPlan.Violated++;
+       else fingerprint.riskPlan.Followed++;
+
+       let emos = [];
+       try { emos = JSON.parse(tr.emotions || "[]"); } catch(e) {}
+       if (emos.includes('#Emotion_Hope')) fingerprint.emotion.Hope++;
+       if (emos.includes('#Emotion_Fear')) fingerprint.emotion.Fear++;
+       if (emos.length === 0) fingerprint.emotion.Neutral++;
+
+       if (tr.side === 'BUY') fingerprint.direction.BUY++;
+       else if (tr.side === 'SELL') fingerprint.direction.SELL++;
+
+       if (tr.trade_time) {
+         const hour = new Date(tr.trade_time).getUTCHours();
+         if (hour >= 0 && hour < 8) fingerprint.session.Asia++;
+         else if (hour >= 8 && hour < 14) fingerprint.session.London++;
+         else fingerprint.session['New York']++;
+       }
+    });
+
+    return {
+      totalTrades, noSlCount, noSlRatio, lossCount: noSlLosses.length, lossRate, totalNoSlLossUsd,
+      medianSl, medianNoSl, medianMultiplier, medianPct,
+      p90Sl, p90NoSl, p90Pct,
+      maxSl, maxNoSl, maxPct, maxMultiplier,
+      top3, concentrationPct, top4Count: top4.length,
+      fingerprint, ascendingNoSlLosses, slLosses
+    };
+  }, [trades, affectedTradeIds]);
+
+  const BarCompare = ({ label, subLabel, valNoSl, valSl, pctChange }) => {
+     const maxVal = Math.max(valNoSl, valSl, 1);
+     const widthNoSl = (valNoSl / maxVal) * 100;
+     const widthSl = (valSl / maxVal) * 100;
+
+     return (
+       <div className="mb-6 last:mb-0">
+          <div className="flex items-baseline gap-2 mb-2">
+             <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wide">{label}</span>
+             {subLabel && <span className="text-[10px] text-slate-400 font-medium">({subLabel})</span>}
+          </div>
+          <div className="space-y-2.5">
+             <div className="flex items-center gap-3">
+                <span className="w-16 text-xs font-semibold text-rose-600 dark:text-rose-400">Không SL</span>
+                <div className="flex-1 h-3 bg-slate-100 dark:bg-slate-800 rounded-sm overflow-hidden flex items-center">
+                   <div className="h-full bg-rose-500 transition-all duration-500" style={{ width: `${widthNoSl}%` }}></div>
+                </div>
+                <span className="w-14 text-right text-sm font-black text-rose-600 dark:text-rose-400">{fmt$(valNoSl)}</span>
+                <span className="w-12 text-right text-xs font-bold text-rose-500">
+                  {pctChange > 0 ? '+' : ''}{pctChange.toFixed(0)}%
+                </span>
+             </div>
+             <div className="flex items-center gap-3">
+                <span className="w-16 text-xs font-semibold text-slate-500">Lệnh có SL</span>
+                <div className="flex-1 h-3 bg-slate-100 dark:bg-slate-800 rounded-sm overflow-hidden flex items-center">
+                   <div className="h-full bg-slate-300 dark:bg-slate-600 transition-all duration-500" style={{ width: `${widthSl}%` }}></div>
+                </div>
+                <span className="w-14 text-right text-sm font-bold text-slate-600 dark:text-slate-400">{fmt$(valSl)}</span>
+                <span className="w-12"></span>
+             </div>
+          </div>
+       </div>
+     );
+  };
+
+  const FingerprintBar = ({ label, count, total, colorClass }) => {
+     const pct = total > 0 ? (count / total) * 100 : 0;
+     return (
+       <div className="flex items-center gap-3 mb-2.5">
+          <span className="w-24 text-xs font-semibold text-slate-600 dark:text-slate-300 truncate">{label}</span>
+          <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+             <div className={`h-full ${colorClass} transition-all duration-500`} style={{ width: `${pct}%` }}></div>
+          </div>
+          <span className="w-12 text-right text-[11px] font-bold text-slate-500">{count} / {total}</span>
+       </div>
+     );
+  };
+
+  const DotPlot = ({ dataNoSl, dataSl }) => {
+     const maxVal = Math.max(...dataNoSl, ...dataSl, 1);
+     
+     return (
+        <div className="flex flex-col gap-5 mt-6 border-t theme-border pt-6">
+           <div className="flex items-center gap-2 mb-1">
+             <Info className="w-3.5 h-3.5 text-slate-400" />
+             <span className="text-[11px] text-slate-500 font-medium">Sự phân bổ tần suất lệnh lỗ. Lệnh Không SL thường có rủi ro bị kéo giãn ra xa (đuôi rủi ro dài).</span>
+           </div>
+           <div>
+              <div className="text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">Phân bổ lệnh KHÔNG SL</div>
+              <div className="relative h-6 border-b border-slate-200 dark:border-slate-700">
+                {dataNoSl.map((v, i) => (
+                  <div key={i} className="absolute w-2.5 h-2.5 rounded-full bg-rose-500/60 bottom-0 transform -translate-x-1 translate-y-1" style={{ left: `${(v / maxVal) * 100}%` }}></div>
+                ))}
+              </div>
+           </div>
+           <div>
+              <div className="text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-2 uppercase tracking-wide">Phân bổ lệnh KỶ LUẬT (CÓ SL)</div>
+              <div className="relative h-6 border-b border-slate-200 dark:border-slate-700">
+                {dataSl.map((v, i) => (
+                  <div key={i} className="absolute w-2.5 h-2.5 rounded-full bg-slate-400/60 bottom-0 transform -translate-x-1 translate-y-1" style={{ left: `${(v / maxVal) * 100}%` }}></div>
+                ))}
+              </div>
+           </div>
+        </div>
+     );
+  };
 
   return (
-    <div className="mt-6 rounded-2xl border theme-border bg-white dark:bg-slate-900 shadow-xl dark:shadow-2xl relative overflow-hidden animate-slide-up">
+    <div className="mt-6 rounded-2xl border theme-border bg-slate-50 dark:bg-slate-900/50 shadow-xl dark:shadow-2xl relative overflow-hidden animate-slide-up">
       {/* Header section */}
-      <div className="p-6 border-b theme-border relative z-10">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-              <p className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                HÀNH VI CẦN SỬA
-              </p>
-            </div>
-            <h4 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight mb-3">
+      <div className="p-6 border-b theme-border flex flex-col md:flex-row md:items-start justify-between gap-4 bg-white dark:bg-slate-900">
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
+            <p className="text-[11px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">
+              HÀNH VI CẦN SỬA
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <h4 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight leading-none">
               Không đặt Stop Loss
             </h4>
-            <div className="flex items-center gap-2 text-xs font-semibold">
-              <span className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300 uppercase">
-                CẤP {category || 'Risk'}
-              </span>
-              <span className="text-slate-300 dark:text-slate-600">•</span>
-              <span className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300">
-                Mức độ nghiêm trọng <span className="font-black">{severity || '8.5'} / 10</span>
-              </span>
+            <div className="text-slate-500 dark:text-slate-400 text-sm font-semibold pb-1">
+              {metrics.noSlCount} / {metrics.totalTrades} lệnh · chiếm {metrics.noSlRatio.toFixed(1)}%
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => onFilterTrades && onFilterTrades(affectedTradeIds)}
-              className="flex items-center gap-1.5 bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-500/30 px-4 py-2 rounded-xl font-bold transition-all text-sm"
-            >
-              <Target className="w-4 h-4" />
-              Lọc lệnh ({violationCount})
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onFilterTrades && onFilterTrades(affectedTradeIds)}
+            className="flex items-center gap-1.5 bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-500/30 px-4 py-2.5 rounded-xl font-bold transition-all text-sm"
+          >
+            <Target className="w-4 h-4" />
+            Lọc lệnh ({metrics.noSlCount})
+          </button>
+          <button onClick={onClose} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
-      <div className="p-6 space-y-6 relative z-10 bg-slate-50/50 dark:bg-slate-900/50">
+      <div className="p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
         
-        {/* Top Two Boxes */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* TẦNG 1: IMPACT HERO */}
+        <div className="col-span-12 md:col-span-12 flex flex-col md:flex-row gap-6">
+          <div className="bg-white dark:bg-slate-800 border theme-border rounded-2xl p-6 flex-1 flex flex-col justify-center relative overflow-hidden shadow-sm">
+             <div className="absolute top-0 right-0 p-4 opacity-5">
+               <AlertTriangle className="w-40 h-40 text-rose-500" />
+             </div>
+             <div className="relative z-10 text-center">
+                <div className="text-7xl font-black text-rose-600 dark:text-rose-400 mb-2 tracking-tighter">
+                  {metrics.medianMultiplier.toFixed(2)}×
+                </div>
+                <div className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-6">
+                  Mức lỗ trung bình khi bạn thả rông SL
+                </div>
+                <div className="flex items-center justify-center gap-4 text-base font-semibold">
+                  <span className="text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 px-4 py-2 rounded-lg">{fmt$(metrics.medianNoSl)} / lot</span>
+                  <span className="text-slate-400 text-sm italic font-medium">so với</span>
+                  <span className="text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-4 py-2 rounded-lg">{fmt$(metrics.medianSl)} / lot (khi kỷ luật)</span>
+                </div>
+                {metrics.medianPct > 0 && (
+                  <div className="mt-5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 text-xs font-black">
+                    +{metrics.medianPct.toFixed(1)}% THIỆT HẠI TĂNG THÊM
+                  </div>
+                )}
+             </div>
+          </div>
           
-          {/* Left Box: Stats */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border theme-border shadow-sm flex flex-col justify-between items-center text-center">
-            {/* Circular representation */}
-            <div className="relative w-40 h-40 flex items-center justify-center mb-4">
-               {/* Background Circle */}
-               <svg className="absolute inset-0 w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                 <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="6" className="text-slate-100 dark:text-slate-700" />
-                 {/* Foreground Circle - Assuming max 283 dasharray */}
-                 <circle cx="50" cy="50" r="45" fill="none" stroke="currentColor" strokeWidth="6" strokeDasharray={`${violationPct * 2.83} 283`} className="text-rose-500 transition-all duration-1000 ease-out" strokeLinecap="round" />
-               </svg>
-               <div className="relative z-10 flex flex-col items-center">
-                 <span className="text-4xl font-black text-slate-900 dark:text-white">{violationCount}</span>
-                 <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">lệnh vi phạm</span>
-                 <span className="text-[10px] text-slate-400 mt-1">trên tổng {totalTrades} lệnh</span>
-               </div>
-            </div>
-
-            <div className="w-full bg-rose-50 dark:bg-rose-500/10 rounded-xl p-3 flex items-center justify-between border border-rose-100 dark:border-rose-500/20">
-               <span className="text-sm font-semibold text-rose-700 dark:text-rose-300">Tổng thiệt hại ước tính</span>
-               <div className="flex items-center gap-2">
-                 <span className="text-xl font-black text-rose-600 dark:text-rose-400">{fmt$(damage)}</span>
-                 <TrendingDown className="w-5 h-5 text-rose-500" />
-               </div>
-            </div>
-          </div>
-
-          {/* Right Box: Description & Trend */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border theme-border shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-2.5 mb-3">
-                 <div className="w-8 h-8 rounded-full bg-rose-100 dark:bg-rose-500/20 flex items-center justify-center shrink-0">
-                   <AlertCircle className="w-4 h-4 text-rose-500" />
-                 </div>
-                 <h5 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                   Bạn đang giao dịch mà không có khiên bảo vệ.
-                 </h5>
-              </div>
-              <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                <strong className="text-slate-800 dark:text-slate-200">{violationCount} lệnh ({violationPct}%)</strong> hoàn toàn thả trôi không cắt lỗ. Đây là một hành vi mang rủi ro cực kỳ cao, có thể dẫn đến việc cháy tài khoản chỉ sau một lệnh duy nhất.
-              </p>
-            </div>
-
-            <div className="mt-6">
-               <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-3">Xu hướng theo thời gian</p>
-               <div className="flex items-end gap-3 h-24">
-                  {trendMonths.length > 0 ? trendMonths.map((m, i) => {
-                    const val = trend.monthly[m] || 0;
-                    const hPct = Math.max(10, (val / maxTrend) * 100);
-                    const isHigh = i === trendMonths.length - 1; 
-                    return (
-                      <div key={m} className="flex flex-col items-center justify-end h-full flex-1 group">
-                        <div className="w-full flex justify-center items-end h-full pb-2">
-                           <div 
-                             className={`w-full max-w-[24px] rounded-t-sm transition-all duration-300 ${isHigh || val === maxTrend ? 'bg-rose-500' : 'bg-rose-300/60 dark:bg-rose-500/40 hover:bg-rose-400'}`}
-                             style={{ height: `${hPct}%` }}
-                           />
-                        </div>
-                        <span className="text-[11px] font-medium text-slate-500 mt-1">
-                          T{parseInt(m.slice(5))}
-                        </span>
-                      </div>
-                    )
-                  }) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm italic">Không đủ dữ liệu xu hướng</div>
-                  )}
-               </div>
-            </div>
-          </div>
-
-        </div>
-
-        {/* Why it matters Box */}
-        <div className="bg-slate-100/50 dark:bg-slate-800/50 rounded-2xl p-6 border theme-border">
-          <div className="flex items-center gap-2 mb-6 text-violet-600 dark:text-violet-400 font-black text-xs uppercase tracking-widest">
-             <Zap className="w-4 h-4" /> VÌ SAO ĐIỀU NÀY QUAN TRỌNG
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-             <div className="flex items-start gap-4">
-                <div className="p-3 rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 shrink-0">
-                  <ShieldAlert className="w-6 h-6" />
-                </div>
-                <div>
-                  <h6 className="font-bold text-slate-800 dark:text-slate-200 mb-1.5 text-sm">Rủi ro cháy tài khoản</h6>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">Không có SL &rarr; Một lệnh thua có thể quét sạch lợi nhuận của nhiều ngày.</p>
-                </div>
+          <div className="w-full md:w-64 flex flex-col gap-3">
+             <div className="bg-white dark:bg-slate-800 rounded-xl p-4.5 px-5 border theme-border flex items-center justify-between shadow-sm">
+                <span className="text-sm font-bold text-slate-600 dark:text-slate-300">{metrics.noSlCount} <span className="font-medium text-slate-400 ml-1">lệnh Không SL</span></span>
              </div>
-             <div className="flex items-start gap-4">
-                <div className="p-3 rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 shrink-0">
-                  <BrainCircuit className="w-6 h-6" />
-                </div>
-                <div>
-                  <h6 className="font-bold text-slate-800 dark:text-slate-200 mb-1.5 text-sm">Tâm lý hy vọng</h6>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">Giá đi ngược &rarr; Gồng lỗ với hy vọng giá quay lại thay vì cắt sớm và chờ cơ hội khác.</p>
-                </div>
+             <div className="bg-white dark:bg-slate-800 rounded-xl p-4.5 px-5 border theme-border flex items-center justify-between shadow-sm">
+                <span className="text-sm font-bold text-rose-600 dark:text-rose-400">{metrics.lossCount} <span className="font-medium text-rose-400/70 ml-1">lệnh bị thua lỗ</span></span>
+                <span className="text-[10px] font-black text-rose-500 bg-rose-50 dark:bg-rose-500/10 px-2 py-1 rounded-md">{metrics.lossRate.toFixed(1)}%</span>
              </div>
-             <div className="flex items-start gap-4">
-                <div className="p-3 rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 shrink-0">
-                  <TrendingDown className="w-6 h-6" />
-                </div>
-                <div>
-                  <h6 className="font-bold text-slate-800 dark:text-slate-200 mb-1.5 text-sm">Mất kiểm soát hệ thống</h6>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">Rủi ro mở không giới hạn phá vỡ hoàn toàn lợi thế toán học (Edge) dài hạn.</p>
-                </div>
+             <div className="bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-xl p-5 shadow-sm flex flex-col justify-center h-full">
+                <span className="text-[11px] font-bold text-rose-500 dark:text-rose-400 uppercase tracking-widest mb-1">Tổng tiền thiệt hại</span>
+                <span className="text-3xl font-black text-rose-600 dark:text-rose-300">-{fmt$(metrics.totalNoSlLossUsd)}</span>
              </div>
           </div>
         </div>
 
-        {/* Evidence & Coach Tip */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Evidence */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border theme-border shadow-sm">
-             <div className="space-y-6">
-                {evObserved.length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-200">
-                         <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></span> Chuỗi quan sát được (Observed)
-                      </div>
-                      <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">PRIMARY</span>
-                    </div>
-                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-100 dark:border-slate-700/50 space-y-1">
-                       {evObserved[0].split('\n').map((line, idx) => {
-                         const isBullet = line.trim().startsWith('•') || line.trim().startsWith('-');
-                         return (
-                           <div key={idx} className={`text-sm leading-relaxed ${isBullet ? 'ml-2 mt-2 text-slate-600 dark:text-slate-400 flex items-start gap-2' : 'font-semibold text-slate-800 dark:text-slate-200 mb-2'}`}>
-                              {isBullet && <span className="text-blue-500 font-black mt-0.5">•</span>}
-                              <span>{line.replace(/^[•-]\s*/, '')}</span>
-                           </div>
-                         );
-                       })}
-                    </div>
-                  </div>
-                )}
-                
-                {evDeclared.length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-200">
-                         <span className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]"></span> Lời thú nhận (Declared)
-                      </div>
-                      <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">STRONG</span>
-                    </div>
-                    <div className="bg-purple-50/50 dark:bg-purple-500/10 rounded-xl p-4 border border-purple-100/50 dark:border-purple-500/20">
-                       {evDeclared.map((line, idx) => (
-                         <div key={idx} className="text-sm text-purple-900 dark:text-purple-200 font-medium flex items-start gap-2">
-                            <span className="text-purple-500 font-black mt-0.5">"</span>
-                            <span className="italic">{line}</span>
-                            <span className="text-purple-500 font-black mt-0.5">"</span>
-                         </div>
-                       ))}
-                    </div>
-                  </div>
-                )}
-
-                {evContext.length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-200">
-                         <span className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.8)]"></span> Bối cảnh tâm lý (Context)
-                      </div>
-                      <span className="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">SUPPORTING</span>
-                    </div>
-                    <div className="bg-amber-50/50 dark:bg-amber-500/10 rounded-xl p-4 border border-amber-100/50 dark:border-amber-500/20">
-                       {evContext.map((line, idx) => (
-                         <div key={idx} className="text-sm text-amber-900 dark:text-amber-200 font-medium">
-                            {line}
-                         </div>
-                       ))}
-                    </div>
-                  </div>
-                )}
+        {/* TẦNG 2: EVIDENCE (Loss Profile & Damage) */}
+        <div className="col-span-12 md:col-span-7 bg-white dark:bg-slate-800 border theme-border rounded-2xl p-6 shadow-sm">
+           <div className="flex items-center justify-between mb-6">
+             <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-black text-xs uppercase tracking-widest">
+               <BarChart3 className="w-4 h-4 text-rose-500" /> HỒ SƠ THIỆT HẠI (QUY ĐỔI 1 LOT)
              </div>
-          </div>
-
-          {/* Coach Tip */}
-          <div className="bg-rose-50/50 dark:bg-rose-900/20 rounded-2xl p-6 border border-rose-100 dark:border-rose-500/20 shadow-sm flex flex-col justify-between">
-             <div className="flex items-center gap-2 mb-4 text-rose-500 dark:text-rose-400 font-black text-xs uppercase tracking-widest">
-                <Lightbulb className="w-4 h-4" /> COACH TIP
-             </div>
-             <div className="flex gap-3 text-rose-900 dark:text-rose-100 flex-1 items-center">
-                <span className="text-4xl text-rose-300 dark:text-rose-600 font-serif leading-none mt-[-10px]">"</span>
-                <p className="text-sm font-medium leading-relaxed italic pr-4">
-                  Thà chấp nhận một khoản lỗ nhỏ đúng kế hoạch, còn hơn giữ lệnh và cầu nguyện. Stop Loss chính là bảo hiểm sinh mạng cho tài khoản của bạn, hãy luôn bật nó!
-                </p>
-             </div>
-             <div className="text-right text-xs font-bold text-rose-400 dark:text-rose-500 mt-4">
-               — Coach AI
-             </div>
-          </div>
-        </div>
-
-        {/* Quick Suggestion */}
-        <div className="bg-slate-100 dark:bg-slate-800/60 rounded-xl p-4 border theme-border flex items-center gap-3">
-           <div className="flex items-center gap-2 text-violet-600 dark:text-violet-400 font-black text-xs shrink-0">
-             <Zap className="w-4 h-4 fill-violet-600 dark:fill-violet-400" /> Gợi ý nhanh:
            </div>
-           <div className="text-xs text-slate-600 dark:text-slate-300 font-medium flex items-center flex-wrap gap-x-2 gap-y-1">
-             <span>Luôn đặt cứng SL ngay khi vừa khớp lệnh</span>
-             <span className="text-slate-400">•</span>
-             <span>Tuyệt đối không nới rộng khoảng cách SL</span>
-             <span className="text-slate-400">•</span>
-             <span>Tuân thủ rủi ro tối đa 1-2% tài khoản cho mỗi lệnh</span>
+           
+           <BarCompare 
+              label="Trung vị thiệt hại" 
+              subLabel="Mức lỗ điển hình nhất"
+              valNoSl={metrics.medianNoSl} 
+              valSl={metrics.medianSl} 
+              pctChange={metrics.medianPct} 
+           />
+           <BarCompare 
+              label="Rủi ro đuôi (P90 Loss)" 
+              subLabel="Mức lỗ đại diện cho 10% các lệnh tồi tệ nhất"
+              valNoSl={metrics.p90NoSl} 
+              valSl={metrics.p90Sl} 
+              pctChange={metrics.p90Pct} 
+           />
+           <BarCompare 
+              label="Mức lỗ nặng nhất" 
+              subLabel="Max Loss"
+              valNoSl={metrics.maxNoSl} 
+              valSl={metrics.maxSl} 
+              pctChange={metrics.maxPct} 
+           />
+
+           <DotPlot dataNoSl={metrics.ascendingNoSlLosses} dataSl={metrics.slLosses} />
+        </div>
+
+        <div className="col-span-12 md:col-span-5 bg-white dark:bg-slate-800 border theme-border rounded-2xl p-6 shadow-sm flex flex-col">
+           <div className="flex items-center gap-2 mb-2 text-slate-800 dark:text-slate-200 font-black text-xs uppercase tracking-widest">
+             <Crosshair className="w-4 h-4 text-rose-500" /> SỰ TẬP TRUNG THIỆT HẠI
+           </div>
+           <p className="text-[11px] text-slate-500 mb-5">Một số ít lệnh vi phạm có thể phá hủy thành quả của toàn bộ tài khoản.</p>
+           
+           <div className="mb-6 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border theme-border">
+             <div className="text-sm font-medium text-slate-600 dark:text-slate-300 mb-3 text-center">
+                Chỉ <span className="text-rose-500 font-black text-base">{metrics.top4Count}</span> lệnh tạo ra <span className="text-rose-500 font-black text-base bg-rose-100 dark:bg-rose-500/20 px-1.5 py-0.5 rounded">{metrics.concentrationPct.toFixed(0)}%</span> tổng thiệt hại
+             </div>
+             <div className="w-full h-2.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                <div className="h-full bg-rose-500 rounded-full" style={{ width: `${metrics.concentrationPct}%` }}></div>
+             </div>
+           </div>
+
+           <div className="flex-1 flex flex-col">
+              <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-2.5 uppercase tracking-widest">Top 3 lệnh lỗ nặng nhất</div>
+              <div className="space-y-2 flex-1">
+                 {metrics.top3.length > 0 ? metrics.top3.map((tr, i) => (
+                   <div key={tr.id} className="flex items-center justify-between bg-slate-50 dark:bg-slate-900/50 p-2.5 px-4 rounded-xl border theme-border">
+                      <div className="flex items-center gap-3">
+                         <span className="text-[10px] font-black text-slate-400 w-4">#{i + 1}</span>
+                         <span className="text-sm font-bold text-rose-600 dark:text-rose-400">-{fmt$(tr.realizedLossUsd)}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                         <span className="text-[10px] font-medium text-slate-500 bg-slate-200/50 dark:bg-slate-800/50 px-2 py-0.5 rounded">{tr.durationStr}</span>
+                         <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 bg-slate-200 dark:bg-slate-800 px-1.5 py-0.5 rounded border theme-border">{tr.size} Lot</span>
+                      </div>
+                   </div>
+                 )) : (
+                   <div className="text-sm text-slate-400 italic text-center py-4">Không có lệnh lỗ.</div>
+                 )}
+              </div>
+           </div>
+        </div>
+
+        {/* TẦNG 3: PATTERN */}
+        <div className="col-span-12 md:col-span-6 bg-white dark:bg-slate-800 border theme-border rounded-2xl p-6 shadow-sm">
+           <div className="flex items-center gap-2 mb-2 text-slate-800 dark:text-slate-200 font-black text-xs uppercase tracking-widest">
+             <Activity className="w-4 h-4 text-violet-500" /> BỘ NHẬN DIỆN HÀNH VI
+           </div>
+           <p className="text-[11px] text-slate-500 mb-6">Bạn thường có xu hướng bỏ Stop Loss trong những hoàn cảnh nào?</p>
+           
+           <div className="space-y-6">
+              <div>
+                <div className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-widest">Kế hoạch giao dịch</div>
+                <FingerprintBar label="Phá vỡ" count={metrics.fingerprint.riskPlan.Violated} total={metrics.noSlCount} colorClass="bg-rose-500" />
+                <FingerprintBar label="Tuân thủ" count={metrics.fingerprint.riskPlan.Followed} total={metrics.noSlCount} colorClass="bg-slate-400" />
+              </div>
+              
+              <div>
+                <div className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-widest">Trạng thái tâm lý</div>
+                <FingerprintBar label="Hy vọng" count={metrics.fingerprint.emotion.Hope} total={metrics.noSlCount} colorClass="bg-amber-500" />
+                <FingerprintBar label="Sợ hãi" count={metrics.fingerprint.emotion.Fear} total={metrics.noSlCount} colorClass="bg-purple-500" />
+                <FingerprintBar label="Bình tĩnh" count={metrics.fingerprint.emotion.Neutral} total={metrics.noSlCount} colorClass="bg-slate-400" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-widest">Hướng lệnh</div>
+                  <FingerprintBar label="BUY" count={metrics.fingerprint.direction.BUY} total={metrics.noSlCount} colorClass="bg-emerald-500" />
+                  <FingerprintBar label="SELL" count={metrics.fingerprint.direction.SELL} total={metrics.noSlCount} colorClass="bg-rose-500" />
+                </div>
+
+                <div>
+                  <div className="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-widest">Phiên giao dịch</div>
+                  <FingerprintBar label="Phiên Mỹ" count={metrics.fingerprint.session['New York']} total={metrics.noSlCount} colorClass="bg-blue-500" />
+                  <FingerprintBar label="Phiên Âu" count={metrics.fingerprint.session.London} total={metrics.noSlCount} colorClass="bg-indigo-400" />
+                  <FingerprintBar label="Phiên Á" count={metrics.fingerprint.session.Asia} total={metrics.noSlCount} colorClass="bg-slate-400" />
+                </div>
+              </div>
+           </div>
+        </div>
+
+        <div className="col-span-12 md:col-span-6 flex flex-col gap-6">
+           <div className="bg-gradient-to-br from-rose-950 to-slate-900 border border-rose-900/50 rounded-2xl p-6 flex-1 flex flex-col justify-center items-center text-center relative overflow-hidden shadow-sm">
+              <div className="relative z-10">
+                 <div className="flex items-center justify-center gap-2 mb-6 text-rose-500 font-black text-xs uppercase tracking-widest">
+                   <AlertTriangle className="w-4 h-4" /> TRƯỜNG HỢP CỰC ĐOAN (TAIL RISK)
+                 </div>
+                 <div className="text-rose-200/60 font-semibold text-sm mb-2 uppercase tracking-widest">Mức lỗ tồi tệ nhất khi không SL</div>
+                 <div className="text-7xl font-black text-rose-500 mb-6 drop-shadow-lg">
+                   -{fmt$(metrics.maxNoSl)}
+                 </div>
+                 <div className="inline-flex items-center gap-2 bg-white/5 px-5 py-2.5 rounded-xl border border-white/10 backdrop-blur-sm">
+                   <span className="!text-white font-black text-lg drop-shadow-sm">{metrics.maxMultiplier.toFixed(2)}×</span> 
+                   <span className="text-rose-200/80 text-xs font-semibold">so với mức lỗ điển hình khi kỷ luật</span>
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        {/* TẦNG 4: AI INSIGHT (QUOTE STYLE) */}
+        <div className="col-span-12 mt-4 relative">
+           <div className="absolute top-6 left-6 md:top-8 md:left-8">
+              <Quote className="w-16 h-16 text-rose-500/10 dark:text-rose-400/10 fill-current transform -scale-x-100" />
+           </div>
+           <div className="bg-rose-50/50 dark:bg-rose-500/5 rounded-2xl p-8 px-8 md:px-16 border border-rose-100 dark:border-rose-500/10 flex flex-col justify-center">
+              <p className="text-slate-700 dark:text-slate-300 text-lg md:text-xl font-medium leading-relaxed italic relative z-10 mt-4 md:mt-2">
+                "{behavior?.coaching?.message || 'Thị trường không trừng phạt bạn vì đoán sai hướng, nó trừng phạt bạn vì sự cố chấp. Bạn có thể may mắn 99 lần nhờ gồng lỗ, nhưng chỉ cần 1 cú giật của Rủi ro đuôi (Tail Risk) để thiêu rụi tất cả. Stop Loss không phải là điểm nhận sai, nó là quyền được tồn tại.'}"
+              </p>
+              <div className="mt-8 flex items-center gap-3">
+                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rose-400 to-rose-600 flex items-center justify-center shadow-lg shadow-rose-500/30">
+                    <Activity className="w-5 h-5 text-white" />
+                 </div>
+                 <div>
+                    <div className="text-sm font-bold text-slate-800 dark:text-slate-200">Behavior Intelligence</div>
+                    <div className="text-[10px] font-bold text-rose-500 uppercase tracking-widest">AI TRADING COACH</div>
+                 </div>
+              </div>
            </div>
         </div>
 

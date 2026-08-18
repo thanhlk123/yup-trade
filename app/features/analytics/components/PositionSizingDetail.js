@@ -1,5 +1,5 @@
 import React from 'react';
-import { Target, Info, Activity, AlertTriangle, ShieldCheck, CheckCircle2, TrendingDown, Minus, Filter, List } from 'lucide-react';
+import { Target, Info, Activity, AlertTriangle, ShieldCheck, CheckCircle2, TrendingDown, Minus, Filter, List, Layers } from 'lucide-react';
 
 function fmt$(n) {
   if (!n && n !== 0) return '$0';
@@ -138,14 +138,19 @@ export function PositionSizingDetail({ behavior, onFilterTrades, t }) {
                       <p className="text-[10px] text-slate-500 dark:text-slate-400">Expectancy</p>
                     </div>
                     <span className={`font-mono font-bold ${topAffectedAsset.anomExp < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{fmt$(topAffectedAsset.anomExp)} <span className="text-[10px] text-slate-400">/ trade</span></span>
+                    <span className={`font-mono font-bold ${topAffectedAsset.anomExp < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
+                      {topAffectedAsset.anomExp > 0 ? '+' : ''}{topAffectedAsset.anomExp?.toFixed(2)}{topAffectedAsset.usedMetric === 'R' ? 'R' : '$'}
+                      <span className="text-[10px] text-slate-400"> / trade</span>
+                    </span>
                   </div>
                   <div className="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800">
                     <div>
                       <span className="text-sm text-slate-500 font-black uppercase block">Edge Delta</span>
                       <span className="text-[10px] text-slate-400 block mt-0.5 max-w-[150px]">Expectancy lost when sizing above your baseline</span>
                     </div>
-                    <span className={`font-mono font-black text-2xl ${topAffectedAsset.delta < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                      {fmt$(topAffectedAsset.delta)} <span className="text-xs text-slate-400 font-medium">/ trade</span>
+                    <span className={`font-black text-2xl ${isEffective ? 'text-emerald-500' : 'text-rose-500'}`}>
+                      {topAffectedAsset.delta > 0 ? '+' : ''}{topAffectedAsset.delta.toFixed(2)}{topAffectedAsset.usedMetric === 'R' ? 'R' : '$'} 
+                      <span className="text-xs text-slate-400 font-medium">/ trade</span>
                     </span>
                   </div>
                 </div>
@@ -183,45 +188,35 @@ export function PositionSizingDetail({ behavior, onFilterTrades, t }) {
           
           {/* Sizing Snapshot */}
           {topAffectedAsset && topAffectedAsset.baseline && (
-            <div className="bg-slate-50 dark:bg-slate-950/50 rounded-xl p-5 border border-slate-100 dark:border-slate-800/60">
-              <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-1.5">
-                <Activity className="w-3 h-3" /> SIZING SNAPSHOT ({topAffectedAsset.asset})
-              </p>
-              
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <p className="text-[10px] text-slate-500">Median Size</p>
-                  <p className="font-mono font-bold text-slate-700 dark:text-slate-200">{topAffectedAsset.baseline.med.toFixed(2)}</p>
+            <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-200 dark:border-slate-700">
+              <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 mb-3 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-slate-500" />
+                Baseline Analysis ({topAffectedAsset.asset})
+              </h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
+                  <p className="text-xs text-slate-400 mb-1">Median Size (P50)</p>
+                  <p className="font-mono font-bold text-slate-700 dark:text-slate-200">{topAffectedAsset.baseline.medSize?.toFixed(2)}</p>
                 </div>
-                <div>
-                  <p className="text-[10px] text-slate-500">P90 Size</p>
-                  <p className="font-mono font-bold text-slate-700 dark:text-slate-200">{topAffectedAsset.baseline.p90.toFixed(2)}</p>
+                <div className="p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700">
+                  <p className="text-xs text-slate-400 mb-1">Threshold (P90)</p>
+                  <p className="font-mono font-bold text-slate-700 dark:text-slate-200">{topAffectedAsset.baseline.p90Size?.toFixed(2)}</p>
                 </div>
-                <div>
-                  <p className="text-[10px] text-slate-500">Anomaly Threshold</p>
-                  <p className="font-mono font-bold text-rose-500 dark:text-rose-400">{'>'} {topAffectedAsset.baseline.anomalyThreshold.toFixed(2)}</p>
+                <div className="p-3 bg-rose-50 dark:bg-rose-500/10 rounded-xl border border-rose-100 dark:border-rose-500/20">
+                  <p className="text-xs text-rose-500/70 mb-1">Anomaly Target</p>
+                  <p className="font-mono font-bold text-rose-500 dark:text-rose-400">{'>'} {topAffectedAsset.baseline.p90Size?.toFixed(2)}</p>
                 </div>
-                <div>
-                  <p className="text-[10px] text-slate-500">Largest Size Detected</p>
-                  <p className="font-mono font-bold text-rose-500 dark:text-rose-400">{topAffectedAsset.largestSize?.toFixed(2)}</p>
-                  {topAffectedAsset.baseline.p90 > 0 && (
-                    <p className="text-[9px] text-rose-400">{(topAffectedAsset.largestSize / topAffectedAsset.baseline.p90).toFixed(1)}x your P90</p>
+                <div className="p-3 bg-rose-50 dark:bg-rose-500/10 rounded-xl border border-rose-100 dark:border-rose-500/20">
+                  <p className="text-xs text-rose-500/70 mb-1">Your Max Size</p>
+                  <p className="font-mono font-black text-rose-600 dark:text-rose-400">{topAffectedAsset.largestSize?.toFixed(2)}</p>
+                  {topAffectedAsset.baseline.p90Size > 0 && (
+                    <p className="text-[9px] text-rose-400">{(topAffectedAsset.largestSize / topAffectedAsset.baseline.p90Size).toFixed(1)}x your P90</p>
                   )}
-                </div>
-              </div>
-              
-              <div className="pt-3 border-t border-slate-200 dark:border-slate-800 grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-[10px] text-slate-500">Normal Trades</p>
-                  <p className="font-mono font-bold text-slate-700 dark:text-slate-200">{topAffectedAsset.normalCount}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] text-slate-500">Oversized Trades</p>
-                  <p className="font-mono font-bold text-rose-500 dark:text-rose-400">{topAffectedAsset.anomalyCount}</p>
                 </div>
               </div>
             </div>
           )}
+          
           <div className="bg-slate-50 dark:bg-slate-950/50 rounded-xl p-5 border border-slate-100 dark:border-slate-800/60 h-full">
             <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-4 flex items-center gap-1.5">
               <List className="w-3 h-3" /> CHI TIẾT THEO MÃ TÀI SẢN (ASSETS)
@@ -241,14 +236,24 @@ export function PositionSizingDetail({ behavior, onFilterTrades, t }) {
                       </div>
                       <p className="text-[10px] text-slate-500 mt-0.5">{ast.anomalyCount} lệnh bất thường / {ast.normalCount} bình thường</p>
                       {ast.baseline && (
-                        <p className="text-[10px] text-slate-400 mt-0.5">P90: <strong className="text-slate-500 dark:text-slate-300">{ast.baseline.p90.toFixed(2)}</strong> | Med: {ast.baseline.med.toFixed(2)}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">P90: <strong className="text-slate-500 dark:text-slate-300">{ast.baseline.p90Size?.toFixed(2)}</strong> | Med: {ast.baseline.medSize?.toFixed(2)}</p>
                       )}
                     </div>
                     
                     {ast.assetClass !== 'insufficient_baseline' ? (
                        <div className="text-right">
-                         <p className={`text-sm font-bold font-mono ${ast.delta < 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{fmt$(ast.delta)}</p>
-                         <p className="text-[9px] text-slate-400 uppercase font-bold">Delta</p>
+                         <div className="flex items-center gap-2 justify-end">
+                            <span className="text-[10px] text-slate-400 w-16">Normal</span>
+                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                                {ast.normExp > 0 ? '+' : ''}{ast.normExp?.toFixed(2)}{ast.usedMetric === 'R' ? 'R' : '$'}
+                            </p>
+                         </div>
+                         <div className="flex items-center gap-2 justify-end">
+                            <span className="text-[10px] text-slate-400 w-16">Oversize</span>
+                            <p className={`text-sm font-black ${ast.anomExp > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                {ast.anomExp > 0 ? '+' : ''}{ast.anomExp?.toFixed(2)}{ast.usedMetric === 'R' ? 'R' : '$'}
+                            </p>
+                         </div>
                        </div>
                     ) : (
                        <div className="text-right">

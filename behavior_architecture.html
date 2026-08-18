@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trading - Behavior Engine Architecture</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-orange: #f59e0b;
+            --accent-purple: #8b5cf6;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 50px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, #60a5fa, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .category {
+            margin-bottom: 40px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .category-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .category-header h2 {
+            margin: 0;
+            font-size: 1.25rem;
+        }
+
+        .category-risk h2 { color: var(--accent-red); }
+        .category-psychology h2 { color: var(--accent-purple); }
+        .category-management h2 { color: var(--accent-blue); }
+        .category-context h2 { color: var(--accent-orange); }
+
+        .behavior-list {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+            gap: 20px;
+        }
+
+        .behavior-card {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .behavior-title {
+            font-weight: bold;
+            font-size: 1.1rem;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .behavior-id {
+            font-family: monospace;
+            background: #334155;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            color: #cbd5e1;
+        }
+
+        .behavior-desc {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 10px;
+        }
+
+        .merged-badge {
+            display: inline-block;
+            background: rgba(59, 130, 246, 0.1);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-top: 10px;
+        }
+
+        .merged-badge strong {
+            color: #93c5fd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Behavior Engine Architecture V2</h1>
+            <p>Bản quy hoạch rút gọn từ 22 lỗi chồng chéo xuống còn 15 Core Behaviors (Độc lập & Sắc bén)</p>
+        </div>
+
+        <!-- Nhóm 1: Risk & Sizing -->
+        <div class="category">
+            <div class="category-header category-risk">
+                <h2>I. Quản lý Rủi ro & Khối lượng (Risk & Sizing)</h2>
+            </div>
+            <div class="behavior-list">
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Không đặt Stop Loss
+                        <span class="behavior-id">noSl</span>
+                    </div>
+                    <div class="behavior-desc">Lỗi chí mạng nhất trong giao dịch. Vào lệnh không có điểm dừng lỗ bảo vệ vốn.</div>
+                    <div class="merged-badge"><strong>Quy hoạch:</strong> Giữ nguyên, xóa bỏ lỗi noTp vì không quá nguy hiểm.</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Risk Oversizing
+                        <span class="behavior-id">oversized</span>
+                    </div>
+                    <div class="behavior-desc">Khối lượng lớn hơn P90 Baseline VÀ Rủi ro tuyệt đối tăng đột biến làm giảm Edge.</div>
+                    <div class="merged-badge"><strong>Đã gộp:</strong> Bao gồm cả lỗi <i>asymmetricSizing</i> (Vào lệnh bất cân xứng).</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Nhồi lệnh gồng lỗ (DCA/Martingale)
+                        <span class="behavior-id">average_down_loss</span>
+                    </div>
+                    <div class="behavior-desc">Tiếp tục bơm thêm tiền vào một vị thế đang thua lỗ, đặc biệt nghiêm trọng nếu nhồi volume lớn dần.</div>
+                    <div class="merged-badge"><strong>Đã gộp:</strong> Gộp <i>dca</i> và <i>martingale</i> làm một để tránh double-penalty.</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Nhồi lệnh lãi sai cách
+                        <span class="behavior-id">pyramidMismanagement</span>
+                    </div>
+                    <div class="behavior-desc">Nhồi thêm lệnh thuận xu hướng (Pyramid) nhưng lại làm tăng rủi ro tổng thể một cách bất hợp lý.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nhóm 2: Tâm lý & Setup -->
+        <div class="category">
+            <div class="category-header category-psychology">
+                <h2>II. Tâm lý & Tiêu chuẩn Setup (Psychology & Setup)</h2>
+            </div>
+            <div class="behavior-list">
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Trả thù thị trường
+                        <span class="behavior-id">revenge_trading</span>
+                    </div>
+                    <div class="behavior-desc">Vào lệnh với tâm lý cay cú ngay sau khi bị dính Stop Loss để gỡ gạc.</div>
+                    <div class="merged-badge"><strong>Đã gộp:</strong> Trọn bộ <i>revengeTrading</i> và <i>compulsiveReEntry</i>.</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Vào lệnh FOMO / Đuổi giá
+                        <span class="behavior-id">fomo_execution</span>
+                    </div>
+                    <div class="behavior-desc">Sợ lỡ cơ hội nên vào lệnh khi giá đã chạy xa khỏi vùng mua/bán an toàn.</div>
+                    <div class="merged-badge"><strong>Đã gộp:</strong> Gộp <i>fomo</i> và <i>poorExecution</i>.</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Giao dịch quá mức (Overtrading)
+                        <span class="behavior-id">overtrading</span>
+                    </div>
+                    <div class="behavior-desc">Tần suất vào lệnh trong ngày/tuần cao hơn mức Baseline, bào mòn tài khoản bằng phí và tâm lý.</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Vào lệnh thiếu chất lượng
+                        <span class="behavior-id">low_quality_setup</span>
+                    </div>
+                    <div class="behavior-desc">Bỏ qua các tiêu chuẩn giao dịch, vào các setup loại C hoặc thiếu các yếu tố xác nhận (Confirmation).</div>
+                    <div class="merged-badge"><strong>Đã gộp:</strong> Gộp <i>poorSetupGrade</i> và <i>lowConfirmation</i>.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nhóm 3: Quản lý Lệnh -->
+        <div class="category">
+            <div class="category-header category-management">
+                <h2>III. Quản lý Vị thế (Trade Management)</h2>
+            </div>
+            <div class="behavior-list">
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Chốt non do sợ hãi
+                        <span class="behavior-id">fear_based_exit</span>
+                    </div>
+                    <div class="behavior-desc">Không chịu được áp lực rung lắc, chốt lời quá sớm so với kế hoạch hoặc dời SL hòa vốn vội vàng.</div>
+                    <div class="merged-badge"><strong>Đã gộp:</strong> Gộp <i>exitTooEarly</i> và <i>prematureBreakeven</i>.</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Gồng lỗ quá lâu
+                        <span class="behavior-id">holdTooLong</span>
+                    </div>
+                    <div class="behavior-desc">Lệnh đã sai bối cảnh và quá thời gian nhưng vẫn cố chấp không chịu cắt lỗ.</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Đảo ngược R:R (Chuỗi lệnh)
+                        <span class="behavior-id">rrInversion</span>
+                    </div>
+                    <div class="behavior-desc">Hậu quả của việc chốt non và gồng lỗ: Lệnh thắng thì ăn nhỏ, lệnh thua thì mất lớn. (Đo đạc ở cấp độ Portfolio).</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nhóm 4: Bối cảnh -->
+        <div class="category">
+            <div class="category-header category-context">
+                <h2>IV. Bối cảnh & Môi trường (Context & Environment)</h2>
+            </div>
+            <div class="behavior-list">
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Đánh ngược xu hướng
+                        <span class="behavior-id">counterTrend</span>
+                    </div>
+                    <div class="behavior-desc">Cố chấp cản tàu, bắt dao rơi hoặc chặn đỉnh trong một cấu trúc xu hướng đang mạnh.</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Bão tin tức (High Impact News)
+                        <span class="behavior-id">highImpactNews</span>
+                    </div>
+                    <div class="behavior-desc">Đánh bạc với thị trường vào các thời điểm ra tin đỏ (NFP, FOMC, CPI) khi spread và slippage dãn mạnh.</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Ôm lệnh qua tuần
+                        <span class="behavior-id">weekendHolding</span>
+                    </div>
+                    <div class="behavior-desc">Giữ vị thế Day Trading qua những ngày nghỉ lễ hoặc cuối tuần, chịu rủi ro Gap giá khó lường.</div>
+                </div>
+                <div class="behavior-card">
+                    <div class="behavior-title">
+                        Đánh sai phiên (Session Bias)
+                        <span class="behavior-id">sessionBias</span>
+                    </div>
+                    <div class="behavior-desc">Giao dịch trong các phiên thiếu thanh khoản hoặc không phù hợp với đặc tính của cặp tiền đó (VD: Đánh GBP/JPY phiên Á).</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

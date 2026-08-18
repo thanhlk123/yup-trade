@@ -4,6 +4,7 @@ import { Plus, X } from 'lucide-react';
 import { useLanguageStore } from '@/app/core/i18n/store';
 import { useDashboardStore } from '@/app/features/dashboard/store/dashboardStore';
 import { useThemeStore } from '@/app/core/theme/store';
+import { useAlertStore } from '@/app/core/ui/store/alertStore';
 
 export default function AccountTabs() {
   const t = useLanguageStore(state => state.t);
@@ -70,7 +71,44 @@ export default function AccountTabs() {
     }
   };
   
-  const handleDeleteAccountTab = (tab) => { console.log('Delete Tab', tab) };
+  const handleDeleteAccountTab = async (tab) => {
+    useAlertStore.getState().showAlert({
+      title: 'Xóa Tab Giao Dịch',
+      message: `Bạn có chắc chắn muốn xóa tab "${tab.label}"? Toàn bộ các lệnh giao dịch trong tab này cũng sẽ bị xóa vĩnh viễn và không thể khôi phục!`,
+      type: 'danger',
+      confirmText: 'Xóa Vĩnh Viễn',
+      cancelText: 'Hủy Bỏ',
+      isAsync: true,
+      onConfirm: async () => {
+        try {
+          const res = await fetch(`/api/account-tabs?key=${encodeURIComponent(tab.key)}`, {
+            method: 'DELETE'
+          });
+          const data = await res.json();
+          if (data.success) {
+            if (activeTab === tab.key) {
+              setActiveTab('ALL');
+            }
+            await loadAccountTabs();
+            window.location.reload();
+          } else {
+            useAlertStore.getState().showAlert({
+              title: 'Lỗi',
+              message: 'Failed to delete tab: ' + data.error,
+              type: 'danger'
+            });
+          }
+        } catch (e) {
+          console.error(e);
+          useAlertStore.getState().showAlert({
+            title: 'Lỗi',
+            message: 'Đã xảy ra lỗi khi xóa tab',
+            type: 'danger'
+          });
+        }
+      }
+    });
+  };
   
   const handleSaveInlineRename = async () => {
     if (!editingTabName.trim() || !editingTabKey) {
@@ -258,6 +296,7 @@ export default function AccountTabs() {
 
               {accountTabs.length > 2 && (
                 <button
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
                     handleDeleteAccountTab(tab);

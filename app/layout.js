@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import GlobalErrorHandler from '@/components/GlobalErrorHandler';
+import GlobalAlertModal from '@/components/GlobalAlertModal';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,6 +27,7 @@ export default function RootLayout({ children }) {
     >
       <body className="min-h-full flex flex-col" suppressHydrationWarning>
         <GlobalErrorHandler />
+        <GlobalAlertModal />
         {children}
       </body>
     </html>

@@ -386,8 +386,16 @@ const groupTradesBlock = (symbolGroups, groupedResult) => {
       let totalSize = 0, totalPnl = 0, weightedEntrySum = 0, weightedExitSum = 0;
       const slValues = [], tpValues = [];
 
-      const datePart = firstTrade.trade_time ? firstTrade.trade_time.split(' ')[0] : '';
-      let notesSummary = `[Giao dịch DCA gộp từ ${groupTrades.length} lệnh ngày ${datePart}]\n`;
+      let datePartLocal = '';
+      if (firstTrade.trade_time) {
+          const d = new Date(firstTrade.trade_time.replace(' ', 'T') + 'Z');
+          if (!isNaN(d.getTime())) {
+              datePartLocal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+          } else {
+              datePartLocal = firstTrade.trade_time.split(' ')[0] || '';
+          }
+      }
+      let notesSummary = `[Giao dịch DCA gộp từ ${groupTrades.length} lệnh ngày ${datePartLocal}]\n`;
 
       groupTrades.forEach((t, idx) => {
         totalSize += t.size;
@@ -398,8 +406,16 @@ const groupTradesBlock = (symbolGroups, groupedResult) => {
         if (t.stop_loss) slValues.push(t.stop_loss);
         if (t.take_profit) tpValues.push(t.take_profit);
 
-        const timePart = t.trade_time ? t.trade_time.split(' ')[1] : '';
-        notesSummary += `- Lệnh #${idx + 1}: Vol ${t.size} | Entry ${t.entry_price} -> Exit ${t.exit_price} | PnL: ${t.pnl >= 0 ? '+' : ''}${t.pnl} USD${timePart ? ` lúc ${timePart}` : ''}\n`;
+        let timePartLocal = '';
+        if (t.trade_time) {
+            const d = new Date(t.trade_time.replace(' ', 'T') + 'Z');
+            if (!isNaN(d.getTime())) {
+                timePartLocal = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+            } else {
+                timePartLocal = t.trade_time.split(' ')[1] || '';
+            }
+        }
+        notesSummary += `- Lệnh #${idx + 1}: Vol ${t.size} | Entry ${t.entry_price} -> Exit ${t.exit_price} | PnL: ${t.pnl >= 0 ? '+' : ''}${t.pnl} USD${timePartLocal ? ` lúc ${timePartLocal}` : ''}\n`;
         if (t.user_notes) notesSummary += `  Ghi chú: ${t.user_notes}\n`;
       });
 

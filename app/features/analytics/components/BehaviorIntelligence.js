@@ -15,6 +15,8 @@ import { NoTpDetail } from './NoTpDetail';
 import { NoSlDetail } from './NoSlDetail';
 import { RevengeDetail } from './RevengeDetail';
 import { MartingaleDetail } from './MartingaleDetail';
+import { DcaDetail } from './DcaDetail';
+import { CounterTrendDetail } from './CounterTrendDetail';
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -28,16 +30,17 @@ function fmt$(n) {
 
 function fmtPct(n) { return (n * 100).toFixed(0) + '%'; }
 
-function StatusBadge({ status }) {
+function StatusBadge({ status, severity }) {
+  const finalStatus = status || (severity >= 8 ? 'critical' : severity >= 6 ? 'high' : severity >= 4 ? 'medium' : 'low');
   const map = {
-    critical: 'bg-rose-500/15 text-rose-400 border-rose-500/30',
-    high:     'bg-orange-500/15 text-orange-400 border-orange-500/30',
-    medium:   'bg-amber-500/15 text-amber-400 border-amber-500/30',
-    low:      'bg-slate-500/15 text-slate-400 border-slate-500/30',
+    critical: 'bg-rose-500/15 text-rose-500 dark:text-rose-400 border-rose-500/30',
+    high:     'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30',
+    medium:   'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30',
+    low:      'bg-slate-500/15 text-slate-600 dark:text-slate-400 border-slate-500/30',
   };
   return (
-    <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${map[status] || map.medium}`}>
-      {status}
+    <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${map[finalStatus] || map.medium}`}>
+      {finalStatus}
     </span>
   );
 }
@@ -493,13 +496,13 @@ function BadBehaviorRow({ behavior, rank, isActive, onClick, t }) {
       onClick={onClick}
       className={`flex items-center gap-3 p-3 rounded-xl border transition cursor-pointer group ${
         isActive
-          ? 'bg-rose-500/10 border-rose-500/30'
-          : 'theme-inner-card theme-border hover:border-slate-600'
+          ? 'bg-rose-50 dark:bg-rose-500/10 border-rose-200 dark:border-rose-500/30 shadow-sm'
+          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
       }`}
     >
       {/* Rank */}
       <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black ${
-        isActive ? 'bg-rose-500 text-white' :
+        isActive ? 'bg-rose-500 dark:bg-rose-600 !text-white shadow-md shadow-rose-500/20' :
         rank === 1 ? 'bg-rose-500/20 text-rose-400' :
         rank === 2 ? 'bg-orange-500/20 text-orange-400' :
         'bg-amber-500/20 text-amber-400'
@@ -528,10 +531,10 @@ function BadBehaviorRow({ behavior, rank, isActive, onClick, t }) {
 
       {/* Damage + status */}
       <div className="text-right shrink-0">
-        <p className={`text-sm font-black ${isOpCost ? 'text-amber-400' : 'text-rose-400'}`}>
+        <p className={`text-sm font-black ${isOpCost ? 'text-amber-500 dark:text-amber-400' : 'text-rose-500 dark:text-rose-400'}`}>
           {fmt$(damage)}
         </p>
-        <StatusBadge status={behavior.status} />
+        <StatusBadge status={behavior.status} severity={behavior.severity} />
       </div>
 
       <ChevronRight className={`w-4 h-4 text-slate-600 group-hover:text-slate-400 transition shrink-0 ${isActive ? 'rotate-90' : ''}`} />
@@ -748,6 +751,22 @@ export default function BehaviorIntelligence() {
         />
       ) : selectedBehavior && selectedBehavior.id === 'martingale' ? (
         <MartingaleDetail
+          behavior={selectedBehavior}
+          onFilterTrades={handleFilterTrades}
+          onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}
+          t={t}
+          trades={trades}
+        />
+      ) : selectedBehavior && selectedBehavior.id === 'dca' ? (
+        <DcaDetail
+          behavior={selectedBehavior}
+          onFilterTrades={handleFilterTrades}
+          onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}
+          t={t}
+          trades={trades}
+        />
+      ) : selectedBehavior && selectedBehavior.id === 'counter_trend' ? (
+        <CounterTrendDetail
           behavior={selectedBehavior}
           onFilterTrades={handleFilterTrades}
           onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}
