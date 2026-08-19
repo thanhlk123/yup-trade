@@ -12,3 +12,5 @@ When building or modifying the Electron desktop app for this repository:
 4. Always build native dependencies specifically for Electron ARM64 using `npx electron-builder install-app-deps --arch arm64` before copying to `.next/standalone/node_modules/sqlite3`.
 5. Ensure `standaloneDir` in `electron/main.js` resolves via `app.asar.unpacked`.
 
+# AI Trading System Context Rule
+**MANDATORY**: Before reviewing code or implementing any new features, you MUST read the [SYSTEM_CONTEXT.md](file:///Users/mac/Learning/ai-trading%202/SYSTEM_CONTEXT.md) file to gain a comprehensive understanding of the system's data flow, CSV normalization, and exact Tag definitions. This ensures all behavior engines and API routes adhere to the established Behavior Engine V2 rules.

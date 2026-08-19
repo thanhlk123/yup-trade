@@ -14,9 +14,9 @@ import { PositionSizingDetail } from './PositionSizingDetail';
 import { NoTpDetail } from './NoTpDetail';
 import { NoSlDetail } from './NoSlDetail';
 import { RevengeDetail } from './RevengeDetail';
-import { MartingaleDetail } from './MartingaleDetail';
 import { DcaDetail } from './DcaDetail';
 import { CounterTrendDetail } from './CounterTrendDetail';
+import { PyramidDetail } from './PyramidDetail';
 
 // ── Helpers ──────────────────────────────────────────────────
 
@@ -520,11 +520,14 @@ function BadBehaviorRow({ behavior, rank, isActive, onClick, t }) {
             const occ = behavior.occurrences;
             const trades = behavior.affectedTradeIds?.length || occ;
             const cat = behavior.category;
+            const confVal = typeof behavior.confidence === 'object' && behavior.confidence !== null 
+              ? Math.max(behavior.confidence.statistical || 0, behavior.confidence.declared || 0)
+              : (behavior.confidence || 0);
             if (cat === 'sequence') {
               const label = trades === occ ? 'lệnh' : 'lần';
-              return `${occ} ${label} · ${trades} lệnh · Confidence: ${Math.round((behavior.confidence || 0) * 100)}%`;
+              return `${occ} ${label} · ${trades} lệnh · Confidence: ${Math.round(confVal * 100)}%`;
             }
-            return `${occ} ${t('bhOccurrences')} · Confidence: ${Math.round((behavior.confidence || 0) * 100)}%`;
+            return `${occ} ${t('bhOccurrences')} · Confidence: ${Math.round(confVal * 100)}%`;
           })()}
         </p>
       </div>
@@ -749,14 +752,7 @@ export default function BehaviorIntelligence() {
           t={t}
           trades={trades}
         />
-      ) : selectedBehavior && selectedBehavior.id === 'martingale' ? (
-        <MartingaleDetail
-          behavior={selectedBehavior}
-          onFilterTrades={handleFilterTrades}
-          onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}
-          t={t}
-          trades={trades}
-        />
+
       ) : selectedBehavior && selectedBehavior.id === 'dca' ? (
         <DcaDetail
           behavior={selectedBehavior}
@@ -767,6 +763,14 @@ export default function BehaviorIntelligence() {
         />
       ) : selectedBehavior && selectedBehavior.id === 'counter_trend' ? (
         <CounterTrendDetail
+          behavior={selectedBehavior}
+          onFilterTrades={handleFilterTrades}
+          onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}
+          t={t}
+          trades={trades}
+        />
+      ) : selectedBehavior && selectedBehavior.id === 'pyramid_mismanagement' ? (
+        <PyramidDetail
           behavior={selectedBehavior}
           onFilterTrades={handleFilterTrades}
           onClose={() => { setSelectedId(null); if (onFilterByBehavior) onFilterByBehavior(null); }}

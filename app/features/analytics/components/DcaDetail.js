@@ -1,335 +1,379 @@
 import React from 'react';
-import { Target, TrendingDown, TrendingUp, X, Lightbulb, Zap, Search, AlertCircle, BrainCircuit, Activity, BarChart2, Scale, Layers, AlertTriangle } from 'lucide-react';
+import { Target, Search, AlertTriangle, X, Terminal, BrainCircuit, Quote, Activity, Crosshair, ShieldAlert } from 'lucide-react';
 
 function fmt$(n) {
-  if (!n && n !== 0) return '$0';
-  const abs = Math.abs(n);
-  const sign = n < 0 ? '-' : '+';
-  if (abs >= 1000) return sign + '$' + (abs / 1000).toFixed(1) + 'k';
-  return sign + '$' + abs.toFixed(2);
-}
-
-function fmtR(n) {
-  if (!n && n !== 0) return '0.00R';
-  const sign = n < 0 ? '-' : '+';
-  return sign + Math.abs(n).toFixed(2) + 'R';
+   if (!n && n !== 0) return '$0';
+   const abs = Math.abs(n);
+   const sign = n < 0 ? '-' : '+';
+   if (abs >= 1000) return sign + '$' + (abs / 1000).toFixed(1) + 'k';
+   return sign + '$' + abs.toFixed(2);
 }
 
 function fmtPct(n) { return (n * 100).toFixed(1) + '%'; }
 
-export function DcaDetail({ behavior, onFilterTrades, onClose, trades, t }) {
-  const { affectedTradeIds, category, evidence, dcaMetrics, nonDcaBaseline, edgeDelta, profile, aiInsight, status } = behavior;
-  const violationCount = affectedTradeIds?.length || behavior.occurrences || 0;
-  
-  const trend = behavior.trend || {};
-  const trendMonths = trend.months || [];
-  const trendVals = trendMonths.map(m => trend.monthly[m] || 0);
-  const maxTrend = Math.max(...trendVals, 1);
+export function DcaDetail({ behavior, onFilterTrades, onClose }) {
+   const { affectedTradeIds, dcaMetrics, nonDcaBaseline, estimatedEdgeDamage, episodes, aiInsight, evidence, profile } = behavior;
+   const violationCount = affectedTradeIds?.length || 0;
 
-  const evObserved = evidence?.observed || [];
-  const evDeclared = evidence?.declared || [];
+   const worstTradeDca = dcaMetrics?.worstEpisodePnl || 0;
+   const worstTradeNormal = nonDcaBaseline?.worstEpisodePnl || -0.01;
+   const normalLoss = nonDcaBaseline?.avgLoss || -0.01;
+   const ratio = Math.max(1, (worstTradeDca / normalLoss)).toFixed(1);
 
-  const insight = aiInsight || {};
-  const why = insight.why || {};
-  const recovery = insight.recovery || {};
+   // Total Damage value: always negative, matching actual total PnL of affected trades
+   const totalDamageVal = dcaMetrics?.totalPnl != null && dcaMetrics.totalPnl < 0
+     ? dcaMetrics.totalPnl
+     : -Math.abs(estimatedEdgeDamage || dcaMetrics?.totalPnl || 0);
 
-  const isCritical = profile === 'DESTRUCTIVE_DCA' || profile === 'MARTINGALE';
-  const isHighRisk = profile === 'AGGRESSIVE_AVERAGING' || isCritical;
-  const isMediumRisk = profile === 'AVERAGING_DOWN';
-  const isLowRisk = profile === 'CONTROLLED_SCALE_IN' || profile === 'AGGRESSIVE_SCALE_IN';
+   // Average size
+   const dcaSize = dcaMetrics?.avgInitialSize || 0;
+   const dcaTotalAvgSize = dcaSize + (dcaMetrics?.avgAddedSize || 0);
+   const normalSize = nonDcaBaseline?.avgInitialSize || 0;
 
-  const themeColor = isLowRisk ? 'emerald' : isMediumRisk ? 'amber' : 'rose';
-  
-  const getProfileTitle = () => {
-    switch(profile) {
-      case 'DESTRUCTIVE_DCA': return 'DCA HỦY DIỆT (DESTRUCTIVE)';
-      case 'MARTINGALE': return 'DCA GẤP THẾP (MARTINGALE)';
-      case 'AGGRESSIVE_AVERAGING': return 'NHỒI LỖ QUÁ MỨC (AGGRESSIVE)';
-      case 'AVERAGING_DOWN': return 'NHỒI KHI LỖ (AVERAGING DOWN)';
-      case 'AGGRESSIVE_SCALE_IN': return 'SCALE-IN MẠNH (AGGRESSIVE)';
-      case 'CONTROLLED_SCALE_IN': return 'SCALE-IN AN TOÀN (CONTROLLED)';
-      default: return 'DCA / NHỒI LỆNH ÂM';
-    }
-  };
+   // Stats for Bar Charts (Tailored for DCA)
+   const metricsList = [
+      { label: 'KỲ VỌNG LỢI NHUẬN (Expectancy / lần)', format: 'money', dca: dcaMetrics?.expectancy || 0, normal: nonDcaBaseline?.expectancy || 0 },
+      { label: 'VOLUME TRUNG BÌNH BƠM VÀO (Avg Size)', format: 'raw', dca: dcaTotalAvgSize, normal: normalSize },
+      { label: 'TỈ LỆ THẮNG (Win Rate - Cố gồng về bờ)', format: 'percent', dca: dcaMetrics?.winRate || 0, normal: nonDcaBaseline?.winRate || 0 },
+      { label: 'MỨC CẮT LỖ TRUNG BÌNH (AVG LOSS)', format: 'money', dca: dcaMetrics?.avgLoss || 0, normal: normalLoss },
+      { label: 'KHOẢN LỖ NẶNG NHẤT (WORST TRADE)', format: 'money', dca: worstTradeDca, normal: worstTradeNormal },
+   ];
 
-  const getPatternText = (pattern) => {
-    switch(pattern) {
-      case 'MARTINGALE': return 'Gấp thếp (x2 khối lượng)';
-      case 'PROGRESSIVE': return 'Tăng dần khối lượng';
-      case 'DECREASING': return 'Dò đáy (giảm dần size)';
-      case 'MIXED': return 'Kích thước lộn xộn';
-      case 'FLAT': return 'Bình quân giá (Size không đổi)';
-      default: return pattern;
-    }
-  };
+   const renderBar = (dcaVal, normalVal, format) => {
+      const maxVal = Math.max(Math.abs(dcaVal), Math.abs(normalVal), 0.01);
+      const dcaPct = (Math.abs(dcaVal) / maxVal) * 100;
+      const normalPct = (Math.abs(normalVal) / maxVal) * 100;
 
-  const addedRiskPct = why.sizeMultiplier ? (why.sizeMultiplier - 1) * 100 : 0;
-  const useR = insight.outcome?.expectancyR != null;
+      // In DCA context, larger size is bad (red). Expectancy and Worst Trade negative is bad (red).
+      let dcaColor = 'bg-rose-500';
+      let dcaText = 'text-rose-500';
+      if (format === 'percent' || (format === 'money' && dcaVal > 0)) {
+         dcaColor = dcaVal < 0 ? 'bg-rose-500' : 'bg-emerald-500';
+         dcaText = dcaVal < 0 ? 'text-rose-500' : 'text-emerald-500';
+      } else if (format === 'raw') {
+         dcaColor = 'bg-rose-500'; // high volume in DCA is always represented as a warning
+         dcaText = 'text-rose-500';
+      }
 
-  return (
-    <div className="mt-6 rounded-2xl border theme-border bg-white dark:bg-slate-900 shadow-xl dark:shadow-2xl relative overflow-hidden animate-slide-up">
-      {/* Header section */}
-      <div className="p-6 border-b theme-border relative z-10">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`w-2.5 h-2.5 rounded-full bg-${themeColor}-500`}></span>
-              <p className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                {isLowRisk ? 'CHIẾN LƯỢC QUAN SÁT' : 'HÀNH VI CẦN SỬA'}
-              </p>
-            </div>
-            <h4 className={`text-3xl font-black tracking-tight mb-3 ${isCritical ? 'text-rose-600 dark:text-rose-500' : 'text-slate-900 dark:text-white'}`}>
-              {getProfileTitle()}
-            </h4>
-            <div className="flex items-center gap-2 text-xs font-semibold">
-              <span className="px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 uppercase">
-                MỨC ĐỘ RỦI RO: <span className={isHighRisk ? 'text-rose-500 font-black' : isMediumRisk ? 'text-amber-500 font-black' : 'text-emerald-500 font-black'}>{insight.riskLevel || 'N/A'}</span>
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => onFilterTrades && onFilterTrades(affectedTradeIds)}
-              className="flex items-center gap-1.5 bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 hover:bg-violet-200 dark:hover:bg-violet-500/30 px-4 py-2 rounded-xl font-bold transition-all text-sm"
-            >
-              <Target className="w-4 h-4" />
-              Lọc lệnh ({violationCount})
-            </button>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      </div>
+      const normalColor = 'bg-slate-400';
 
-      <div className="p-6 space-y-6 relative z-10 bg-slate-50/50 dark:bg-slate-900/50">
-        
-        {/* Top Two Boxes */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          
-          {/* Left Box: Overview Stats */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border theme-border shadow-sm flex flex-col justify-between items-center text-center">
-            <div className="flex w-full items-center justify-around mb-6">
-               <div className="flex flex-col items-center">
-                 <span className="text-4xl font-black text-slate-900 dark:text-white">{behavior.episodes?.total || 0}</span>
-                 <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Chu kỳ (Episodes)</span>
+      const fmtRaw = (v) => v.toFixed(2) + ' Lot';
+      const dcaStr = format === 'money' ? fmt$(dcaVal) : (format === 'raw' ? fmtRaw(dcaVal) : fmtPct(dcaVal));
+      const normalStr = format === 'money' ? fmt$(normalVal) : (format === 'raw' ? fmtRaw(normalVal) : fmtPct(normalVal));
+
+      return (
+         <div className="space-y-3 mb-6">
+            <div className="flex items-center gap-4">
+               <div className="w-24 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Nhồi lệnh</div>
+               <div className="flex-1 rounded-full h-3 flex items-center">
+                  <div className={`h-3 rounded-full ${dcaColor}`} style={{ width: `${dcaPct}%` }}></div>
                </div>
-               <div className="h-10 w-px bg-slate-200 dark:bg-slate-700"></div>
-               <div className="flex flex-col items-center">
-                 <span className="text-4xl font-black text-slate-900 dark:text-white flex items-baseline gap-1">
-                   <span className="text-emerald-500">{dcaMetrics?.wins || 0}W</span>
-                   <span className="text-xl text-slate-300">-</span>
-                   <span className="text-rose-500">{dcaMetrics?.losses || 0}L</span>
-                 </span>
-                 <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase">Thắng / Thua</span>
+               <div className={`w-24 text-right text-sm font-black ${dcaText}`}>{dcaStr}</div>
+            </div>
+            <div className="flex items-center gap-4">
+               <div className="w-24 text-xs font-bold text-slate-500 dark:text-slate-500 uppercase tracking-wider">Kỷ luật</div>
+               <div className="flex-1 rounded-full h-3 flex items-center">
+                  <div className={`h-3 rounded-full ${normalColor}`} style={{ width: `${normalPct}%` }}></div>
+               </div>
+               <div className="w-24 text-right text-sm font-bold text-slate-600 dark:text-slate-400">{normalStr}</div>
+            </div>
+         </div>
+      );
+   };
+
+   const top3 = [...(episodes?.details || [])].sort((a, b) => a.pnl - b.pnl).slice(0, 3);
+   const oversizedCount = episodes?.losses || 0; // Losses in DCA episodes
+   const oversizedPct = episodes?.total ? (oversizedCount / episodes.total) : 0;
+
+   const evObserved = evidence?.observed || [];
+   const evContext = evidence?.context || [];
+
+   return (
+      <div className="mt-6 rounded-3xl border theme-border bg-slate-50/50 dark:bg-slate-900 shadow-xl dark:shadow-2xl relative overflow-hidden animate-slide-up p-8">
+
+         {/* Top Header Controls */}
+         <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center gap-3">
+               <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-500/20 flex items-center justify-center">
+                  <ShieldAlert className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+               </div>
+               <div>
+                  <h2 className="text-xl font-black text-slate-900 dark:text-white uppercase tracking-tight">Hội Chứng Gồng Lỗ / Nhồi Lệnh</h2>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Hồ Sơ Thiệt Hại (Pain Profile)</p>
                </div>
             </div>
-
-            <div className={`w-full bg-${themeColor}-50 dark:bg-${themeColor}-500/10 rounded-xl p-3 flex items-center justify-between border border-${themeColor}-100 dark:border-${themeColor}-500/20`}>
-               <span className={`text-sm font-semibold text-${themeColor}-700 dark:text-${themeColor}-300`}>Lợi nhuận ròng (Total PnL)</span>
-               <div className="flex items-center gap-2">
-                 <span className={`text-xl font-black text-${themeColor}-600 dark:text-${themeColor}-400`}>
-                   {useR ? fmtR(insight.outcome?.pnl) : fmt$(insight.outcome?.pnl)}
-                 </span>
-               </div>
+            <div className="flex gap-3">
+               <button onClick={() => onFilterTrades && onFilterTrades(affectedTradeIds)} className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 px-4 py-2 rounded-xl font-bold text-sm transition-colors">
+                  <Crosshair className="w-4 h-4" /> Bóc tách lệnh ({violationCount})
+               </button>
+               <button onClick={onClose} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 transition-colors">
+                  <X className="w-5 h-5" />
+               </button>
             </div>
-          </div>
+         </div>
 
-          {/* Right Box: Added Exposure & Mechanics */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border theme-border shadow-sm flex flex-col justify-between">
-            <div>
-              <div className="flex items-center gap-2.5 mb-3">
-                 <div className={`w-8 h-8 rounded-full bg-${themeColor}-100 dark:bg-${themeColor}-500/20 flex items-center justify-center shrink-0`}>
-                   <Layers className={`w-4 h-4 text-${themeColor}-500`} />
-                 </div>
-                 <h5 className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                   Mức độ Bơm Rủi ro (Risk Exposure)
-                 </h5>
-              </div>
-              <ul className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed space-y-2">
-                 <li>• Volume tăng tối đa: <strong className="text-slate-900 dark:text-white">{why.sizeMultiplier ? why.sizeMultiplier.toFixed(1) : 1}x</strong> lần lệnh đầu.</li>
-                 {why.riskMultiplier && (
-                   <li>• Risk tăng tối đa: <strong className="text-rose-500 dark:text-rose-400">{why.riskMultiplier.toFixed(1)}x</strong> lần rủi ro kế hoạch.</li>
-                 )}
-                 <li>• Mô hình nhồi: <strong className="text-slate-900 dark:text-white uppercase">{getPatternText(why.escalationPattern)}</strong></li>
-              </ul>
-              
-              {why.addToInvalidationRatio > 0.7 && why.addToInvalidationRatio <= 5 && (
-                <div className="mt-3 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/30 p-2.5 rounded-lg flex gap-2 items-start text-xs text-rose-700 dark:text-rose-300">
-                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <p><strong>CẢNH BÁO:</strong> Bạn có xu hướng nhồi lệnh khi giá áp sát vùng Stoploss (={(why.addToInvalidationRatio * 100).toFixed(0)}% SL). Hành vi "cứu lệnh" tuyệt vọng này cực kỳ rủi ro.</p>
-                </div>
-              )}
-            </div>
-          </div>
+         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        </div>
+            {/* LEFT COLUMN (70%) */}
+            <div className="lg:col-span-2 flex flex-col gap-6">
 
-        {/* Edge Analysis Box */}
-        <div className="bg-slate-100/50 dark:bg-slate-800/50 rounded-2xl p-6 border theme-border">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black text-xs uppercase tracking-widest">
-               <Activity className="w-4 h-4" /> PHÂN TÍCH LỢI THẾ TỔNG QUAN (EDGE ANALYSIS)
-            </div>
-            {useR && <span className="text-[10px] font-bold bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded uppercase">Đo bằng R-Multiple</span>}
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-             {/* Win Rate */}
-             <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10">
-                  <Target className="w-16 h-16 text-slate-500" />
-                </div>
-                <h6 className="font-bold text-slate-500 dark:text-slate-400 mb-4 text-xs uppercase tracking-wider relative z-10">Win Rate (Nhồi lệnh)</h6>
-                <div className="flex items-end gap-3 mb-2 relative z-10">
-                  <span className="text-3xl font-black text-slate-900 dark:text-white leading-none">{fmtPct(dcaMetrics?.winRate || 0)}</span>
-                  <div className={`flex items-center text-xs font-bold ${edgeDelta?.winRate < 0 ? 'text-rose-500' : 'text-emerald-500'} mb-1`}>
-                    {edgeDelta?.winRate < 0 ? <TrendingDown className="w-3 h-3 mr-1" /> : <TrendingUp className="w-3 h-3 mr-1" />}
-                    {fmtPct(Math.abs(edgeDelta?.winRate || 0))}
+               {/* Worst Trade Box */}
+               <div className="bg-white dark:bg-slate-800 rounded-3xl p-10 border border-rose-100 dark:border-rose-900/30 shadow-sm text-center relative overflow-hidden flex flex-col items-center justify-center min-h-[280px]">
+                  <div className="absolute inset-0 flex items-center justify-center opacity-[0.02] pointer-events-none">
+                     <AlertTriangle className="w-96 h-96 text-rose-500 transform translate-y-8" />
                   </div>
-                </div>
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 relative z-10">
-                  vs <span className="font-bold text-slate-700 dark:text-slate-300">{fmtPct(nonDcaBaseline?.winRate || 0)}</span> (Lệnh không nhồi)
-                </p>
-             </div>
-
-             {/* Profit Factor */}
-             <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10">
-                  <Scale className="w-16 h-16 text-slate-500" />
-                </div>
-                <h6 className="font-bold text-slate-500 dark:text-slate-400 mb-4 text-xs uppercase tracking-wider relative z-10">Profit Factor</h6>
-                <div className="flex items-end gap-3 mb-2 relative z-10">
-                  <span className="text-3xl font-black text-slate-900 dark:text-white leading-none">{useR ? (dcaMetrics?.profitFactorR || 0).toFixed(2) : (dcaMetrics?.profitFactor || 0).toFixed(2)}</span>
-                  <div className={`flex items-center text-xs font-bold ${edgeDelta?.profitFactor < 0 ? 'text-rose-500' : 'text-emerald-500'} mb-1`}>
-                    {edgeDelta?.profitFactor < 0 ? <TrendingDown className="w-3 h-3 mr-1" /> : <TrendingUp className="w-3 h-3 mr-1" />}
-                    {Math.abs(edgeDelta?.profitFactor || 0).toFixed(2)}
+                  <h1 className="text-8xl font-black text-rose-600 dark:text-rose-500 tracking-tighter mb-4 relative z-10">{fmt$(worstTradeDca)}</h1>
+                  <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-6 relative z-10">
+                     VẾT THƯƠNG TRÍ MẠNG (CHU KỲ NHỒI LỆNH TỆ NHẤT)
+                  </p>
+                  <div className="inline-block bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 px-6 py-2.5 rounded-full font-semibold text-sm border border-rose-200 dark:border-rose-500/30 relative z-10 shadow-sm">
+                     Khoản lỗ phình to <strong className="font-black text-rose-800 dark:text-rose-200 text-base">Gấp {ratio} lần</strong> so với mức cắt lỗ kỷ luật trung bình ({fmt$(normalLoss)})
                   </div>
-                </div>
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 relative z-10">
-                  vs <span className="font-bold text-slate-700 dark:text-slate-300">{useR ? (nonDcaBaseline?.profitFactorR || 0).toFixed(2) : (nonDcaBaseline?.profitFactor || 0).toFixed(2)}</span> (Lệnh không nhồi)
-                </p>
-             </div>
-
-             {/* Expectancy */}
-             <div className="bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700/50 shadow-sm relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10">
-                  <BarChart2 className="w-16 h-16 text-slate-500" />
-                </div>
-                <h6 className="font-bold text-slate-500 dark:text-slate-400 mb-4 text-xs uppercase tracking-wider relative z-10">Expectancy (Kỳ vọng)</h6>
-                <div className="flex items-end gap-3 mb-2 relative z-10">
-                  <span className="text-3xl font-black text-slate-900 dark:text-white leading-none">{useR ? fmtR(insight.outcome?.expectancyR) : fmt$(insight.outcome?.expectancy)}</span>
-                  <div className={`flex items-center text-xs font-bold ${edgeDelta?.expectancy < 0 ? 'text-rose-500' : 'text-emerald-500'} mb-1`}>
-                    {edgeDelta?.expectancy < 0 ? <TrendingDown className="w-3 h-3 mr-1" /> : <TrendingUp className="w-3 h-3 mr-1" />}
-                    {useR ? fmtR(Math.abs(insight.outcome?.edgeDeltaExpectancyR || 0)) : fmt$(Math.abs(edgeDelta?.expectancy || 0))}
-                  </div>
-                </div>
-                <p className="text-xs font-medium text-slate-500 dark:text-slate-400 relative z-10">
-                  vs <span className="font-bold text-slate-700 dark:text-slate-300">{useR ? fmtR(nonDcaBaseline?.expectancyR) : fmt$(nonDcaBaseline?.expectancy)}</span> (Lệnh không nhồi)
-                </p>
-             </div>
-          </div>
-          
-          {/* Recovery Behavior - New feature */}
-          {recovery && recovery.attempted > 0 && (
-            <div className="mt-6 flex flex-col md:flex-row gap-4 items-center bg-white dark:bg-slate-800 p-4 rounded-xl border theme-border">
-               <div className="flex-1">
-                 <h6 className="font-bold text-sm text-slate-800 dark:text-slate-200 mb-1">Thói quen gồng/cứu lỗ (Recovery Dependency)</h6>
-                 <p className="text-xs text-slate-600 dark:text-slate-400">Bạn đã có {recovery.attempted} lần nhồi lệnh khi giá đi ngược. Trong đó {recovery.succeeded} lần hệ thống ghi nhận lệnh chuyển từ Lỗ thành Lãi. (Tỷ lệ: {fmtPct(recovery.recoveryRate)}).</p>
                </div>
-               {recovery.recoveryRate > 0.5 ? (
-                 <div className="px-3 py-1.5 bg-rose-50 dark:bg-rose-500/10 text-rose-600 text-xs font-bold rounded-lg border border-rose-200">
-                    Dễ sinh ảo tưởng "Cứ gồng là sẽ về"
-                 </div>
-               ) : (
-                 <div className="px-3 py-1.5 bg-amber-50 dark:bg-amber-500/10 text-amber-600 text-xs font-bold rounded-lg border border-amber-200">
-                    Phần lớn nỗ lực cứu lệnh đều thất bại
-                 </div>
-               )}
-            </div>
-          )}
 
-          {/* Dynamic Coach Evaluation */}
-          <div className={`mt-6 p-4 rounded-xl flex items-start gap-4 border shadow-sm
-            ${isCritical ? 'bg-rose-50/50 border-rose-200 dark:bg-rose-500/10 dark:border-rose-500/30 text-rose-900 dark:text-rose-100' : 
-              isHighRisk || isMediumRisk ? 'bg-amber-50/50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 text-amber-900 dark:text-amber-100' : 
-              'bg-emerald-50/50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/30 text-emerald-900 dark:text-emerald-100'}`}
-          >
-             <div className={`p-2.5 rounded-full shrink-0 
-                ${isCritical ? 'bg-rose-100 dark:bg-rose-500/30 text-rose-600 dark:text-rose-400' : 
-                  isHighRisk || isMediumRisk ? 'bg-amber-100 dark:bg-amber-500/30 text-amber-600 dark:text-amber-400' : 
-                  'bg-emerald-100 dark:bg-emerald-500/30 text-emerald-600 dark:text-emerald-400'}`}
-             >
-               <BrainCircuit className="w-5 h-5" />
+               {/* AI Terminal - Coaching & Evidence */}
+               <div className="bg-slate-50 dark:bg-slate-900 rounded-3xl p-8 border border-slate-200 dark:border-slate-800 shadow-xl relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-rose-500 to-orange-500"></div>
+                  <div className="flex items-center gap-2 mb-6">
+                     <Terminal className="w-5 h-5 text-rose-500" />
+                     <span className="text-rose-500 font-mono text-xs font-bold tracking-widest">SYSTEM_EVALUATION_ROOT</span>
+                  </div>
+
+
+
+                  {/* Evidence Logs */}
+                  {(evContext.length > 0 || evObserved.length > 0) && (
+                     <div className="bg-slate-100 dark:bg-black/40 rounded-2xl p-5 border border-slate-200 dark:border-white/5">
+                        <div className="text-xs font-mono text-slate-500 mb-3">&raquo; Trích xuất bằng chứng (Evidence Logs):</div>
+                        <div className="space-y-2">
+                           {[...evContext, ...evObserved].map((line, idx) => {
+                              const isHighlight = line.includes('🚨') || line.includes('💥') || line.includes('📉') || line.includes('🪤');
+                              const isBullet = line.trim().startsWith('•') || line.trim().startsWith('-');
+                              const text = line.replace(/^[•-]\s*/, '');
+                              return (
+                                 <div key={idx} className={`font-mono text-sm flex gap-3 ${isHighlight ? 'text-rose-600 dark:text-rose-400 font-bold' : 'text-slate-700 dark:text-slate-400'}`}>
+                                    <span className="text-slate-400 dark:text-slate-600 shrink-0">{`[LOG_${idx + 1}]`}</span>
+                                    <span>{isBullet && <span className="text-rose-500 mr-2">›</span>}{text}</span>
+                                 </div>
+                              );
+                           })}
+                        </div>
+                     </div>
+                  )}
+               </div>
+
+            </div>
+
+            {/* RIGHT COLUMN (30%) */}
+            <div className="lg:col-span-1 flex flex-col gap-6">
+
+               {/* Total Damage */}
+               <div className="bg-rose-500 dark:bg-rose-600 rounded-3xl p-6 shadow-[0_8px_30px_rgb(225,29,72,0.3)] flex flex-col justify-center min-h-[150px] text-white relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-4 opacity-15">
+                     <AlertTriangle className="w-20 h-20 text-white" />
+                  </div>
+                  <p className="text-xs font-black text-white/90 uppercase tracking-wider mb-1.5 relative z-10">TỔNG THIỆT HẠI</p>
+                  <p className="text-3xl sm:text-4xl font-black text-white tracking-tight relative z-10 truncate">{fmt$(totalDamageVal)}</p>
+                  <p className="text-sm font-medium text-white/90 mt-2 relative z-10">Số tiền ném qua cửa sổ vì cố chấp ngược xu hướng.</p>
+               </div>
+
+               {/* Stats Boxes */}
+               <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 border theme-border shadow-sm flex items-center justify-between">
+                  <div>
+                     <p className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">SỐ LẦN NHỒI LỆNH (EPISODES)</p>
+                     <p className="text-3xl font-black text-slate-800 dark:text-white">{episodes?.total || 0}</p>
+                  </div>
+               </div>
+
+               <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 border theme-border shadow-sm flex items-center justify-between">
+                  <div>
+                     <p className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">SỐ CHU KỲ CHÁY/THUA LỖ</p>
+                     <p className="text-3xl font-black text-rose-500">{oversizedCount}</p>
+                  </div>
+                  <div className="text-xs font-bold bg-rose-50 dark:bg-rose-500/10 text-rose-600 px-3 py-1.5 rounded-lg border border-rose-100">
+                     {fmtPct(oversizedPct)} Fail
+                  </div>
+               </div>
+
+               {/* Top 3 Worst Trades */}
+               <div className="bg-white dark:bg-slate-800 rounded-3xl p-6 border theme-border shadow-sm flex-1">
+                  <div className="flex items-center gap-2 mb-2 text-slate-900 dark:text-white font-black text-sm uppercase tracking-widest">
+                     <Target className="w-5 h-5 text-rose-500" /> TOP 3 HỐ ĐEN TÀI KHOẢN
+                  </div>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-5 leading-relaxed">
+                     Những chu kỳ cứu lệnh tệ nhất
+                  </p>
+
+                  <div className="space-y-4">
+                     {top3.map((ep, idx) => (
+                        <div key={ep.id || idx} className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl border border-rose-100 dark:border-rose-900/30 bg-rose-50/30 dark:bg-rose-500/5">
+                           <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-rose-400">#{idx + 1}</span>
+                              <span className="text-base sm:text-lg font-black text-rose-600 dark:text-rose-500">{fmt$(ep.pnl)}</span>
+                           </div>
+                           <div className="flex items-center gap-2">
+                              <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-700 px-2 py-1 rounded border border-slate-200 dark:border-slate-600 shadow-sm truncate max-w-[80px]">{ep.asset}</span>
+                              <span className="text-[10px] font-bold text-slate-500 uppercase bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded whitespace-nowrap flex-shrink-0">
+                                 <span className="text-slate-700 dark:text-slate-300 mr-1">{(ep.totalSize || 0).toFixed(2)}</span>Lot
+                              </span>
+                           </div>
+                        </div>
+                     ))}
+                     {top3.length === 0 && (
+                        <p className="text-xs text-slate-400 italic text-center py-8">Không có dữ liệu</p>
+                     )}
+                  </div>
+               </div>
+
+            </div>
+         </div>
+
+      {/* Minimalist Fintech Comparison Table */}
+      <div className="mt-6 bg-white dark:bg-slate-900 rounded-3xl p-6 border theme-border shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-6 pb-4 border-b theme-border">
+          <div className="flex items-center gap-2.5">
+             <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-500 flex items-center justify-center font-bold">
+               <Crosshair className="w-4 h-4" />
              </div>
              <div>
-                <h6 className="font-bold mb-1 text-sm">Kết luận từ hệ thống (Behavior Engine):</h6>
-                <p className="text-sm font-medium leading-relaxed opacity-90">
-                  {profile === 'DESTRUCTIVE_DCA' && 'Hành vi nhồi lỗ của bạn đã ở mức hủy diệt. Khối lượng và rủi ro được bơm vào quá mức cho phép, vượt rào cản SL và không có dấu hiệu kiểm soát. Đây là con đường ngắn nhất dẫn đến cháy tài khoản dù win rate có cao.'}
-                  {profile === 'MARTINGALE' && 'Bạn đang có thói quen gấp thếp khối lượng (nhân đôi) để gỡ gạc nhanh khi giá đi ngược. Đây là một trò chơi may rủi nguy hiểm chứ không còn là trading có kiểm soát.'}
-                  {profile === 'AGGRESSIVE_AVERAGING' && 'Bạn nhồi lệnh rất mạnh tay khi giá bất lợi (Exposure tăng > 3x). Rủi ro tổng thể đang phình to ngoài kế hoạch.'}
-                  {profile === 'AVERAGING_DOWN' && 'Bạn có thói quen nhồi thêm vị thế khi lệnh ban đầu bị âm. Dù chưa quá tay, nhưng Expectancy thường giảm mạnh so với những lệnh không nhồi. Hãy cân nhắc từ bỏ việc trung bình giá xuống.'}
-                  {profile === 'AGGRESSIVE_SCALE_IN' && 'Bạn chia nhỏ lệnh vào (Scale-in), nhưng kích thước vào sau đôi khi khá lớn. Hãy đảm bảo Risk luôn nằm trong Budget.'}
-                  {profile === 'CONTROLLED_SCALE_IN' && 'Khối lượng nhồi lệnh được kiểm soát tốt (không quá 1.5x) và cấu trúc vào lệnh hợp lý. Đây là một chiến lược quản trị vốn tốt chứ không mang tính hoảng loạn cứu lỗ.'}
-                </p>
+               <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">Đối Chiếu Chỉ Số: Nhồi Lệnh vs Giữ Kỷ Luật</h3>
+               <p className="text-[11px] font-medium text-slate-400">Bảng đo lường tác hại và độ lệch hiệu suất chi tiết</p>
              </div>
           </div>
         </div>
 
-        {/* Evidence Details */}
-        {(evObserved.length > 0 || evDeclared.length > 0) && (
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-6 border theme-border shadow-sm">
-             <div className="flex items-center gap-2 mb-5 text-slate-500 dark:text-slate-400 font-black text-xs uppercase tracking-widest">
-                <Search className="w-4 h-4" /> BẰNG CHỨNG GHI NHẬN (EVIDENCE)
-             </div>
-             <div className="space-y-6">
-                {evObserved.length > 0 && (
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-200">
-                         <span className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></span> Log trích xuất từ dữ liệu
-                      </div>
-                    </div>
-                    <div className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4 border border-slate-100 dark:border-slate-700/50 space-y-2">
-                       {evObserved.map((line, idx) => {
-                         const isBullet = line.trim().startsWith('•') || line.trim().startsWith('-');
-                         return (
-                           <div key={idx} className={`text-sm leading-relaxed ${isBullet ? 'ml-2 text-slate-600 dark:text-slate-400 flex items-start gap-2' : 'font-semibold text-slate-800 dark:text-slate-200 mb-1'}`}>
-                              {isBullet && <span className="text-blue-500 font-black mt-0.5">•</span>}
-                              <span>{line.replace(/^[•-]\s*/, '')}</span>
-                           </div>
-                         );
-                       })}
-                    </div>
+        {/* Table Container */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b theme-border text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                <th className="py-3 px-4">Tên Chỉ Số</th>
+                <th className="py-3 px-4 text-rose-500">Nhồi Lệnh (DCA)</th>
+                <th className="py-3 px-4 text-slate-500">Giữ Kỷ Luật</th>
+                <th className="py-3 px-4 text-right">Mức Tác Hại / Độ Lệch</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y theme-border text-xs font-semibold">
+              {/* Row 1: Expectancy */}
+              <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                <td className="py-4 px-4 font-bold text-slate-800 dark:text-slate-200">
+                  Kỳ Vọng Lợi Nhuận
+                  <span className="block text-[10px] font-normal text-slate-400">Expectancy / lần click</span>
+                </td>
+                <td className="py-4 px-4 font-black text-rose-600 dark:text-rose-400">
+                  {fmt$(dcaMetrics?.expectancy || 0)}
+                </td>
+                <td className="py-4 px-4 font-bold text-slate-600 dark:text-slate-400">
+                  {fmt$(nonDcaBaseline?.expectancy || 0)}
+                </td>
+                <td className="py-4 px-4 text-right">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                    Tệ hơn {fmt$(Math.abs((dcaMetrics?.expectancy || 0) - (nonDcaBaseline?.expectancy || 0)))}
+                  </span>
+                </td>
+              </tr>
+
+              {/* Row 2: Volume */}
+              <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                <td className="py-4 px-4 font-bold text-slate-800 dark:text-slate-200">
+                  Volume Trung Bình
+                  <span className="block text-[10px] font-normal text-slate-400">Tổng Volume bơm vào mỗi đợt</span>
+                </td>
+                <td className="py-4 px-4 font-black text-rose-600 dark:text-rose-400">
+                  {dcaTotalAvgSize.toFixed(2)} Lot
+                </td>
+                <td className="py-4 px-4 font-bold text-slate-600 dark:text-slate-400">
+                  {normalSize.toFixed(2)} Lot
+                </td>
+                <td className="py-4 px-4 text-right">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/20">
+                    Bơm x{(normalSize > 0 ? (dcaTotalAvgSize / normalSize) : 1).toFixed(1)} Volume
+                  </span>
+                </td>
+              </tr>
+
+              {/* Row 3: Win Rate */}
+              <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                <td className="py-4 px-4 font-bold text-slate-800 dark:text-slate-200">
+                  Tỷ Lệ Thắng
+                  <span className="block text-[10px] font-normal text-slate-400">Win Rate cố gồng về bờ</span>
+                </td>
+                <td className="py-4 px-4 font-black text-emerald-600 dark:text-emerald-400">
+                  {fmtPct(dcaMetrics?.winRate || 0)}
+                </td>
+                <td className="py-4 px-4 font-bold text-slate-600 dark:text-slate-400">
+                  {fmtPct(nonDcaBaseline?.winRate || 0)}
+                </td>
+                <td className="py-4 px-4 text-right">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    {dcaMetrics?.winRate >= nonDcaBaseline?.winRate ? 'Ảo tưởng gồng về bờ' : 'Thấp hơn kỷ luật'}
+                  </span>
+                </td>
+              </tr>
+
+              {/* Row 4: Avg Loss */}
+              <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                <td className="py-4 px-4 font-bold text-slate-800 dark:text-slate-200">
+                  Cắt Lỗ Trung Bình
+                  <span className="block text-[10px] font-normal text-slate-400">Mức lỗ trung bình khi cắt</span>
+                </td>
+                <td className="py-4 px-4 font-black text-rose-600 dark:text-rose-400">
+                  {fmt$(dcaMetrics?.avgLoss || 0)}
+                </td>
+                <td className="py-4 px-4 font-bold text-slate-600 dark:text-slate-400">
+                  {fmt$(normalLoss)}
+                </td>
+                <td className="py-4 px-4 text-right">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                    Phình to x{(normalLoss < 0 ? (dcaMetrics?.avgLoss / normalLoss) : 1).toFixed(1)} lần
+                  </span>
+                </td>
+              </tr>
+
+              {/* Row 5: Worst Trade */}
+              <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                <td className="py-4 px-4 font-bold text-slate-800 dark:text-slate-200">
+                  Khoản Lỗ Nặng Nhất
+                  <span className="block text-[10px] font-normal text-slate-400">Worst Single Episode</span>
+                </td>
+                <td className="py-4 px-4 font-black text-rose-600 dark:text-rose-400">
+                  {fmt$(worstTradeDca)}
+                </td>
+                <td className="py-4 px-4 font-bold text-slate-600 dark:text-slate-400">
+                  {fmt$(worstTradeNormal)}
+                </td>
+                <td className="py-4 px-4 text-right">
+                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                    Hố đen x{ratio} lần
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+         {/* QUOTE SECTION (AI TRADING COACH STYLE) */}
+         <div className="mt-4 relative">
+            <div className="absolute top-6 left-6 md:top-8 md:left-8">
+               <Quote className="w-16 h-16 text-rose-500/10 dark:text-rose-400/10 fill-current transform -scale-x-100" />
+            </div>
+            <div className="bg-rose-50/50 dark:bg-rose-500/5 rounded-2xl p-8 px-8 md:px-16 border border-rose-100 dark:border-rose-500/10 flex flex-col justify-center">
+               <p className="text-slate-700 dark:text-slate-300 text-lg md:text-xl font-medium leading-relaxed italic relative z-10 mt-4 md:mt-2">
+                  "Trung bình giá (DCA) khi đang lỗ không phải là chiến lược, đó là sự tuyệt vọng. Bạn có thể đúng 9 lần và thoát nạn, nhưng lần thứ 10 sai xu hướng sẽ xóa sổ toàn bộ tài khoản và niềm tin của bạn."
+               </p>
+               <div className="mt-8 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-rose-400 to-rose-600 flex items-center justify-center shadow-lg shadow-rose-500/30">
+                     <Activity className="w-5 h-5 text-white" />
                   </div>
-                )}
-                
-                {evDeclared.length > 0 && (
                   <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2 text-sm font-bold text-slate-800 dark:text-slate-200">
-                         <span className="w-2 h-2 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.8)]"></span> Lời thú nhận / Hashtag
-                      </div>
-                    </div>
-                    <div className="bg-purple-50/50 dark:bg-purple-500/10 rounded-xl p-4 border border-purple-100/50 dark:border-purple-500/20">
-                       {evDeclared.map((line, idx) => (
-                         <div key={idx} className="text-sm text-purple-900 dark:text-purple-200 font-medium flex items-start gap-2">
-                            <span className="text-purple-500 font-black mt-0.5">"</span>
-                            <span className="italic">{line}</span>
-                            <span className="text-purple-500 font-black mt-0.5">"</span>
-                         </div>
-                       ))}
-                    </div>
+                     <div className="text-sm font-bold text-slate-800 dark:text-slate-200">Behavior Intelligence</div>
+                     <div className="text-[10px] font-bold text-rose-500 uppercase tracking-widest">AI TRADING COACH</div>
                   </div>
-                )}
-             </div>
-          </div>
-        )}
+               </div>
+            </div>
+         </div>
 
       </div>
-    </div>
-  );
+   );
 }
